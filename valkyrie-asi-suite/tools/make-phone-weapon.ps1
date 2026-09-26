@@ -1,4 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$Output)
+param(
+    [Parameter(Mandatory=$true)][string]$Output,
+    # The HUD's picture of it: the plain badge-style icon, or the detailed one
+    # with the screen drawn in.
+    [string]$Icon = "weapon_phone_eagle"
+)
 # The phone as a weapon of its own, as a modloader folder, laid out the way
 # modloader adds to a game rather than replaces it:
 #
@@ -31,7 +36,7 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) "valkyrie-phone-weapon-txd"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Path $stage | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $phone "assets\model\textures") -Filter *.png | Copy-Item -Destination $stage
-Copy-Item -LiteralPath (Join-Path $phone "assets\generated\weapon_phone_eagle.png") -Destination (Join-Path $stage "${name}icon.png")
+Copy-Item -LiteralPath (Join-Path $phone "assets\generated\$Icon.png") -Destination (Join-Path $stage "${name}icon.png")
 & (Join-Path $root "tools\pack-phone-txd.ps1") -Source $stage -Output (Join-Path $Output "$name.txd") | Out-Null
 Remove-Item -Recurse -Force $stage
 

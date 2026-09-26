@@ -32,6 +32,7 @@
 #include "phone_model.h"
 #include "picture.h"
 #include "script.h"
+#include "coverage.h"
 #include "services.h"
 #include "sound.h"
 #include "sprite.h"
@@ -198,6 +199,7 @@ struct Call {
     ULONGLONG started = 0;
     ULONGLONG connected = 0;
     ULONGLONG stageAt = 0;
+    ULONGLONG lostSince = 0;  // since when a connected call has had no service
     int choice = 0;
     std::string typed;
     std::string lastLine;  // the other end's last words, for the screen
@@ -289,6 +291,12 @@ struct State {
         // takes, and when each tenth of it (top to bottom) arrives.
         ULONGLONG loadMs = 0;
         ULONGLONG chunkAt[10] = {};
+        // How far the page has come, in the time it takes on a full signal:
+        // it runs slower on a weak one and stops with none.
+        float loaded = 0.0f;
+        ULONGLONG tick = 0;
+        float stalled = 0.0f;
+        bool failed = false;
         std::vector<int> visited;  // pages in the browser's cache this session
         std::string toast;
         ULONGLONG toastAt = 0;
@@ -682,36 +690,27 @@ bool PlayerPlace(float& x, float& y, float& z, float& heading);
 // The signal where CJ is: full in the three cities, fading out across the
 // country between them, a bar less indoors and high up. Worked out a few
 // times a second.
-int SignalBars() {
-    static int bars = 5;
-    static ULONGLONG at = 0;
-    const ULONGLONG now = GetTickCount64();
-    if (now - at < 400) return bars;
-    at = now;
-    float x = 0, y = 0, z = 0, h = 0;
-    if (!PlayerPlace(x, y, z, h)) return bars;
-    const float cities[3][2] = {{1800.0f, -1600.0f}, {-2150.0f, 450.0f}, {2100.0f, 1600.0f}};  // LS, SF, LV
-    float nearest = 1e9f;
-    for (const auto& c : cities) nearest = std::min(nearest, std::hypot(x - c[0], y - c[1]));
-    int b = nearest < 1100.0f ? 5 : nearest < 1700.0f ? 4 : nearest < 2300.0f ? 3 : 2;
-    if (*reinterpret_cast<const int*>(0xB72914) != 0) --b;  // CGame::currArea: indoors
-    if (z > 250.0f) --b;
-    bars = std::clamp(b, 1, 5);
-    return bars;
-}
+// The bars, from the masts on the map (coverage.cpp).
+int SignalBars() { return coverage::Bars(); }
 
 void StatusBar() {
     ui::Fill(0, 0, ui::kScreenW, kStatusH, kPanelDark);
     // Signal: five rising bars with black edges, lit up to the signal there
     // is, then the carrier - and the EDGE "E" while an app is on the network.
     const int bars = SignalBars();
-    for (int i = 0; i < 5; ++i) {
-        const float h = 4.0f + i * 2.5f;
-        ui::Fill(5.0f + i * 5.0f, 16.0f - h, 4.0f, h, kBlack);
-        ui::Fill(6.0f + i * 5.0f, 17.0f - h, 2.0f, h - 2.0f, i < bars ? kWhite : 0xFF505050);
+    if (bars == 0) {
+        // No mast within reach: as the first iPhone says it, in place of the
+        // bars and the carrier.
+        ui::Label(5.0f, 3.0f, "No Service", F(13.0f, kWhite));
+    } else {
+        for (int i = 0; i < 5; ++i) {
+            const float h = 4.0f + i * 2.5f;
+            ui::Fill(5.0f + i * 5.0f, 16.0f - h, 4.0f, h, kBlack);
+            ui::Fill(6.0f + i * 5.0f, 17.0f - h, 2.0f, h - 2.0f, i < bars ? kWhite : 0xFF505050);
+        }
+        ui::Label(32.0f, 3.0f, "iFruit", F(13.0f, kWhite));
     }
-    ui::Label(32.0f, 3.0f, "iFruit", F(13.0f, kWhite));
-    if (g.screen == Screen::Internet || g.screen == Screen::Sites || g.screen == Screen::Maps) {
+    if (bars > 0 && (g.screen == Screen::Internet || g.screen == Screen::Sites || g.screen == Screen::Maps)) {
         const float ex = 32.0f + ui::TextWidth("iFruit", F(13.0f)) + 5.0f;
         ui::Fill(ex, 4.0f, 11.0f, 12.0f, kWhite);
         ui::Label(ex + 5.5f, 3.5f, "E", F(11.0f, kBlack, sprite::Align::Centre, 0));
@@ -1026,6 +1025,8 @@ void Say(const std::string& who, const std::string& line) {
     Subtitle(who + " says (phone): " + line);
 }
 
+void Stage(CallStage s);
+
 void StartCall(const std::string& number) {
     if (number.empty() || g.call.active) return;
     if (!phone_data::Get().settings.poweredOn) return;
@@ -1050,6 +1051,12 @@ void StartCall(const std::string& number) {
     if (recents.size() > phone_data::kMaxRecents) recents.resize(phone_data::kMaxRecents);
     Save();
     logfile::Line("phone: calling %s", number.c_str());
+    if (!coverage::HasService()) {
+        // Nothing to call out on.
+        g.call.lastLine = "No Service";
+        Stage(CallStage::Unreachable);
+        return;
+    }
     sound::Play(config::Get().ringback, true);
 }
 
@@ -1193,11 +1200,33 @@ void UpdateCall() {
     Call& c = g.call;
     if (!c.active) return;
     const ULONGLONG now = GetTickCount64();
-    if (c.stage == CallStage::Dialing && now - c.stageAt > 2200) {
-        Answer();
+    // A weak signal takes longer to get through, and at the edge of it the
+    // call may not connect at all.
+    const ULONGLONG ring = 2200 + static_cast<ULONGLONG>((1.0f - coverage::Quality()) * 2500.0f);
+    if (c.stage == CallStage::Dialing && now - c.stageAt > ring) {
+        static std::mt19937 rng(GetTickCount());
+        if (!coverage::HasService() ||
+            (coverage::Quality() < 0.25f && std::uniform_real_distribution<float>(0.0f, 1.0f)(rng) < 0.35f)) {
+            sound::Stop();
+            c.lastLine = "Call Failed";
+            Stage(CallStage::Unreachable);
+        } else {
+            Answer();
+        }
     } else if ((c.stage == CallStage::Unreachable || c.stage == CallStage::Ending) &&
                now - c.stageAt > 3000) {
         EndCall();
+    } else if (c.stage == CallStage::Connected || c.stage == CallStage::Choose || c.stage == CallStage::Describe) {
+        // Out of service for a few seconds, the call is lost.
+        if (coverage::HasService()) {
+            c.lostSince = 0;
+        } else if (!c.lostSince) {
+            c.lostSince = now;
+        } else if (now - c.lostSince > 3000) {
+            logfile::Line("phone: call to %s lost - no service", c.number.c_str());
+            c.lastLine = "Call Lost";
+            Stage(CallStage::Unreachable);
+        }
     }
 }
 
@@ -2204,7 +2233,8 @@ void Send(const std::string& number) {
     m.number = number;
     m.text = g.draft;
     m.outgoing = true;
-    m.delivered = number == hotline;
+    m.delivered = number == hotline && coverage::HasService();
+    if (!coverage::HasService()) Notice("Message Failed - No Service");
     m.at = phone_data::Now();
     auto& messages = phone_data::Get().messages;
     messages.push_back(m);
@@ -2646,7 +2676,13 @@ void ShowPage(int page) {
     b.address = Address(page);
     static std::mt19937 rng(GetTickCount());
     const bool cached = std::find(b.visited.begin(), b.visited.end(), page) != b.visited.end();
-    if (page != web::kNoPage) {
+    b.loadMs = 0;
+    for (ULONGLONG& at : b.chunkAt) at = 0;
+    b.loaded = 0.0f;
+    b.tick = GetTickCount64();
+    b.stalled = 0.0f;
+    b.failed = false;
+    if (page != web::kNoPage && config::Get().features.slowPages) {
         const web::Page& p = web::Info(page);
         // About a second and a half, plus a second for every 800 000 pixels
         // of page, up to eight; a quarter of that from the cache.
@@ -2670,14 +2706,31 @@ void ShowPage(int page) {
 
 // How much of the page has come down: the bar's progress, and the share of
 // the page (from the top) that can be seen.
+// The page coming down, a frame on: at EDGE's speed for the signal there
+// is - a fifth of it on one bar - and not at all with none, when after ten
+// seconds the browser gives up.
+void AdvanceLoad() {
+    auto& b = g.browser;
+    const ULONGLONG now = GetTickCount64();
+    const float dt = static_cast<float>(std::min<ULONGLONG>(now - b.tick, 250));
+    b.tick = now;
+    if (!b.loadMs || b.failed || b.loaded >= b.loadMs) return;
+    const float rate = coverage::HasService() ? 0.12f + 0.88f * coverage::Quality() : 0.0f;
+    b.loaded += dt * rate;
+    b.stalled = rate > 0.0f ? 0.0f : b.stalled + dt;
+    if (b.stalled > 10000.0f) {
+        b.failed = true;
+        logfile::Line("phone: %s could not load - no service", b.address.c_str());
+    }
+}
 float LoadProgress() {
     const auto& b = g.browser;
     if (!b.loadMs) return 1.0f;
-    return std::min(1.0f, static_cast<float>(GetTickCount64() - b.loadingSince) / b.loadMs);
+    return std::min(1.0f, b.loaded / b.loadMs);
 }
 float PageArrived() {
     const auto& b = g.browser;
-    const ULONGLONG since = GetTickCount64() - b.loadingSince;
+    const ULONGLONG since = static_cast<ULONGLONG>(b.loaded);
     int pieces = 0;
     for (ULONGLONG at : b.chunkAt) pieces += since >= at ? 1 : 0;
     return pieces / 10.0f;
@@ -2685,7 +2738,12 @@ float PageArrived() {
 
 void Navigate(int page) {
     auto& b = g.browser;
-    if (page == web::kNoPage || page == b.page) return;
+    if (page == web::kNoPage) return;
+    if (page == b.page) {
+        // The same page again: only to try once more when it failed.
+        if (b.failed) ShowPage(page);
+        return;
+    }
     if (b.page != web::kNoPage) b.back.push_back(b.page);
     b.forward.clear();
     ShowPage(page);
@@ -2763,6 +2821,15 @@ void PageView() {
     auto& b = g.browser;
     ui::Fill(0, kPageTop, ui::kScreenW, kPageBottom - kPageTop, 0xFF4A4A4A);
     if (b.page == web::kNoPage) return;
+    AdvanceLoad();
+    if (b.failed) {
+        // As the browser says it when there is no network.
+        ui::Fill(0, kPageTop, ui::kScreenW, kPageBottom - kPageTop, kWhite);
+        ui::Label(ui::kScreenW / 2, kPageTop + 120.0f, "Cannot Open Page", F(20.0f, 0xFF303030, sprite::Align::Centre, 0));
+        ui::Label(ui::kScreenW / 2, kPageTop + 152.0f, "The phone is not connected", F(14.0f, 0xFF606060, sprite::Align::Centre, 0));
+        ui::Label(ui::kScreenW / 2, kPageTop + 172.0f, "to the Internet.", F(14.0f, 0xFF606060, sprite::Align::Centre, 0));
+        return;
+    }
     const web::Page& p = web::Info(b.page);
     const bool decoded = web::Load(b.page);
     const float arrived = PageArrived();
@@ -3193,7 +3260,14 @@ const config::Tone& TextTone() { return PickedTone(config::Get().textTones, "tex
 
 // A text arriving from `number` - an order that did not make it, from the
 // restaurant.
+std::vector<std::pair<std::string, std::string>> g_waitingTexts;
+
 void IncomingText(const char* number, const char* body) {
+    // Out of service, a text waits for the signal to come back.
+    if (!coverage::HasService()) {
+        g_waitingTexts.emplace_back(number, body);
+        return;
+    }
     Message m;
     m.number = number;
     m.text = body;
@@ -6933,6 +7007,11 @@ void Frame() {
         std::string pages = bundle::Path("valkyrie-web.dat");
         if (pages.empty()) pages = g_gameDir + "valkyrie-web.dat";
         web::Open(pages);
+        // The signal: Project Eagle's masts under Eagle, San Andreas' own
+        // elsewhere.
+        std::string signal = bundle::Path("valkyrie-signal.bin");
+        if (signal.empty()) signal = g_gameDir + "valkyrie-signal.bin";
+        coverage::Load(signal, GetFileAttributesA((g_gameDir + "PECore.asi").c_str()) != INVALID_FILE_ATTRIBUTES);
         // The phone's own model, from the ASI, unless the ini names another
         // one from the game folder.
         std::string modelFile = g_gameDir + config::Get().model;
@@ -7115,6 +7194,13 @@ void Frame() {
 
     FlashlightFrame();
     BloodFrame();
+    coverage::Update(config::Get().features.signal);
+    // Texts held while out of service, now it is back.
+    if (coverage::HasService() && !g_waitingTexts.empty()) {
+        const auto waiting = g_waitingTexts;
+        g_waitingTexts.clear();
+        for (const auto& [number, body] : waiting) IncomingText(number.c_str(), body.c_str());
+    }
     static bool told = false;
     if (!told) {
         told = true;
@@ -7145,6 +7231,17 @@ struct Drop {
     float x, y, r;     // on the glass, in the screen's points
     float speed;       // running down it, points a second; 0 while it clings
     ULONGLONG born, dries;
+    // A runner: a drop grown heavy enough to slide, as rain on a window
+    // does - stopping and starting, swallowing the small drops in its way,
+    // leaving a line of beads behind it.
+    bool runner = false;
+    ULONGLONG pauseUntil = 0;
+    float wobble = 0.0f, lastBead = 0.0f;
+    float px = 0.0f, py = 0.0f;  // where it was last frame
+    // Caught on a crack, it follows the break down a little way.
+    float followX = 0.0f, followY = 0.0f, followLeft = 0.0f;
+    float blood = 0.0f;  // how red it has turned, 0 to 1
+    bool landed = false;  // looked at for blood under it when it landed
 };
 std::vector<Drop> g_drops;
 float g_dropsDue = 0.0f;
@@ -7169,7 +7266,8 @@ float RainOnPhone() {
     return std::min(rain, 1.0f);
 }
 
-void RainDrops(float dt) {
+// Rain on the glass, a frame on: new drops land, heavy ones run.
+void RainUpdate(float dt) {
     static std::mt19937 rng(GetTickCount());
     auto rnd = [](float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
     const ULONGLONG now = GetTickCount64();
@@ -7182,24 +7280,84 @@ void RainDrops(float dt) {
     // As many for the glass as its size gives it.
     const GlassArea& area = g_glassArea;
     const float share = (area.right - area.left) * (area.bottom - area.top) / (ui::kScreenW * ui::kScreenH);
-    g_dropsDue += rain * 16.0f * share * dt;
-    while (g_dropsDue >= 1.0f && g_drops.size() < static_cast<size_t>(120.0f * share)) {
+    g_dropsDue += rain * 18.0f * share * dt;
+    while (g_dropsDue >= 1.0f && g_drops.size() < static_cast<size_t>(140.0f * share)) {
         g_dropsDue -= 1.0f;
-        const float r = rnd(0.0f, 1.0f) < 0.8f ? rnd(1.2f, 3.0f) : rnd(3.0f, 5.5f);
-        g_drops.push_back({rnd(area.left + 6.0f, area.right - 6.0f), rnd(area.top + 6.0f, area.bottom - 6.0f), r, 0.0f,
-                           now, now + static_cast<ULONGLONG>(rnd(7000.0f, 16000.0f))});
+        const float r = rnd(0.0f, 1.0f) < 0.8f ? rnd(1.0f, 2.8f) : rnd(2.8f, 5.0f);
+        Drop d{rnd(area.left + 6.0f, area.right - 6.0f), rnd(area.top + 6.0f, area.bottom - 6.0f), r, 0.0f,
+               now, now + static_cast<ULONGLONG>(rnd(7000.0f, 16000.0f))};
+        d.wobble = rnd(0.0f, 6.28f);
+        d.px = d.x;
+        d.py = d.y;
+        g_drops.push_back(d);
     }
     if (g_dropsDue >= 1.0f) g_dropsDue = 0.0f;
-    for (Drop& d : g_drops) {
-        // A big drop, once it has gathered, runs down the glass, faster as it goes.
-        if (d.r >= 3.6f && now - d.born > 1500) {
-            d.speed = std::min(60.0f, d.speed + 25.0f * dt);
-            d.y += d.speed * dt;
+    std::vector<Drop> beads;
+    for (size_t i = 0; i < g_drops.size(); ++i) {
+        Drop& d = g_drops[i];
+        d.px = d.x;
+        d.py = d.y;
+        if (now >= d.dries) continue;
+        // Heavy enough, and settled a moment: it lets go.
+        if (!d.runner && d.r >= 3.2f && now - d.born > 1200) {
+            d.runner = true;
+            d.lastBead = d.y;
+        }
+        if (!d.runner || now < d.pauseUntil) continue;
+        // Stick and slip: now and then it holds on for a moment.
+        if (rnd(0.0f, 1.0f) < dt * 0.7f) {
+            d.pauseUntil = now + static_cast<ULONGLONG>(rnd(150.0f, 700.0f));
+            d.speed *= 0.3f;
+            continue;
+        }
+        d.speed = std::min(75.0f, d.speed + 45.0f * dt);
+        const float step = d.speed * dt;
+        if (d.followLeft > 0.0f) {
+            d.x += d.followX * step;
+            d.y += std::max(0.2f, d.followY) * step;
+            d.followLeft -= step;
+        } else {
+            d.x += std::sin(d.wobble + d.y * 0.07f) * 0.35f * step;
+            d.y += step;
+        }
+        // It swallows the small drops it runs into.
+        for (size_t j = 0; j < g_drops.size(); ++j) {
+            Drop& o = g_drops[j];
+            if (j == i || o.runner || now >= o.dries) continue;
+            if (std::hypot(o.x - d.x, o.y - d.y) < d.r + o.r * 0.7f) {
+                d.r = std::min(7.0f, std::sqrt(d.r * d.r + o.r * o.r * 0.6f));
+                d.blood = std::max(d.blood, o.blood * 0.8f);
+                o.dries = now;
+            }
+        }
+        // And leaves beads behind it, getting smaller as it goes.
+        if (d.y - d.lastBead > rnd(5.0f, 9.0f)) {
+            d.lastBead = d.y;
+            Drop bead{d.x + rnd(-0.6f, 0.6f), d.y - d.r * 0.9f, rnd(0.5f, 1.3f), 0.0f, now,
+                      now + static_cast<ULONGLONG>(rnd(3500.0f, 9000.0f))};
+            bead.blood = d.blood * 0.7f;
+            bead.landed = true;
+            bead.px = bead.x;
+            bead.py = bead.y;
+            beads.push_back(bead);
+            d.r = std::max(2.3f, d.r - 0.05f);
+        }
+        if (d.r < 2.6f) {
+            d.runner = false;
+            d.speed = 0.0f;
         }
     }
     g_drops.erase(std::remove_if(g_drops.begin(), g_drops.end(),
                                  [&](const Drop& d) { return now >= d.dries || d.y - d.r > area.bottom; }),
                   g_drops.end());
+    if (g_drops.size() + beads.size() < 400) g_drops.insert(g_drops.end(), beads.begin(), beads.end());
+}
+
+// A drop is a little lens: the screen behind it darker at its lower edge, a
+// faint film over it, and a bright point where it catches the light from
+// above; with blood in it, red.
+void DrawRain() {
+    const ULONGLONG now = GetTickCount64();
     for (const Drop& d : g_drops) {
         const float fadeIn = std::min(1.0f, (now - d.born) / 150.0f);
         const float fadeOut = std::min(1.0f, (d.dries - now) / 1500.0f);
@@ -7207,13 +7365,34 @@ void RainDrops(float dt) {
         auto alpha = [&](uint32_t argb) {
             return (static_cast<uint32_t>((argb >> 24) * a) << 24) | (argb & 0xFFFFFF);
         };
-        // A drop is a little lens: the screen behind it darker at its lower
-        // edge, a faint film over it, and a bright point where it catches the
-        // light from above.
-        const float r = d.r, sx = d.speed > 0.0f ? 0.85f : 1.0f, sy = d.speed > 0.0f ? 1.25f : 1.0f;
+        auto mix = [](uint32_t c0, uint32_t c1, float t) {
+            uint32_t out = 0;
+            for (int sh = 0; sh < 32; sh += 8) {
+                const float v0 = static_cast<float>((c0 >> sh) & 0xFF), v1 = static_cast<float>((c1 >> sh) & 0xFF);
+                out |= static_cast<uint32_t>(v0 + (v1 - v0) * t) << sh;
+            }
+            return out;
+        };
+        const float r = d.r;
+        const bool moving = d.runner && d.speed > 0.0f;
+        const float sx = moving ? 0.85f : 1.0f, sy = moving ? 1.3f : 1.0f;
         ui::Image("disc", d.x - r * sx, d.y - r * sy + r * 0.35f, 2 * r * sx, 2 * r * sy, alpha(0x46000000));
-        ui::Image("disc", d.x - r * sx, d.y - r * sy, 2 * r * sx, 2 * r * sy, alpha(0x30DCE8F0));
-        ui::Image("disc", d.x - r * 0.55f, d.y - r * 0.6f, r * 0.55f, r * 0.55f, alpha(0xD0FFFFFF));
+        ui::Image("disc", d.x - r * sx, d.y - r * sy, 2 * r * sx, 2 * r * sy,
+                  alpha(mix(0x30DCE8F0, 0x90A01010, d.blood)));
+        ui::Image("disc", d.x - r * 0.55f, d.y - r * 0.6f, r * 0.55f, r * 0.55f,
+                  alpha(mix(0xD0FFFFFF, 0x90FFD0D0, d.blood)));
+    }
+}
+
+// The drops' lenses, into the bend layer.
+void BendRain() {
+    const ULONGLONG now = GetTickCount64();
+    for (const Drop& d : g_drops) {
+        const float a = std::min(1.0f, (now - d.born) / 150.0f) * std::min(1.0f, (d.dries - now) / 1500.0f);
+        const bool moving = d.runner && d.speed > 0.0f;
+        const float sx = moving ? 0.85f : 1.0f, sy = moving ? 1.3f : 1.0f;
+        ui::Image("bend_drop", d.x - d.r * sx, d.y - d.r * sy, 2 * d.r * sx, 2 * d.r * sy,
+                  (static_cast<uint32_t>(235.0f * a) << 24) | 0xFFFFFF);
     }
 }
 
@@ -7236,11 +7415,24 @@ struct Crack {
     struct Shard {
         float x[4], y[4];
         uint32_t argb;
+        float leanX, leanY;  // which way the piece is tipped, for the bend layer
+    };
+    // Struck over the display, the panel under the glass breaks too: a spill
+    // of black where its liquid crystal ran, and dead columns of one colour
+    // top to bottom.
+    struct Blot {
+        float x, y, r;
+    };
+    struct Column {
+        float x, width;
+        uint32_t argb;
     };
     float x, y;  // where it was struck, in points
     ULONGLONG at;
     std::vector<Line> lines;
     std::vector<Shard> shards;
+    std::vector<Blot> blots;
+    std::vector<Column> columns;
 };
 std::vector<Crack> g_cracks;
 
@@ -7349,8 +7541,10 @@ Crack MakeCrack(float cx, float cy) {
             const auto& b = joined[out];
             const bool light = rnd(0.0f, 1.0f) < 0.5f;
             const uint32_t alpha = static_cast<uint32_t>(rnd(18.0f, light ? 40.0f : 36.0f));
+            const float tip = rnd(0.0f, 6.2832f), how = rnd(0.12f, 0.4f) * (1.0f - k * 0.25f);
             c.shards.push_back({{a[0], a[2], b[2], b[0]}, {a[1], a[3], b[3], b[1]},
-                                (alpha << 24) | (light ? 0xFFFFFFu : 0x000000u)});
+                                (alpha << 24) | (light ? 0xFFFFFFu : 0x000000u), std::cos(tip) * how,
+                                std::sin(tip) * how});
         }
     }
     // The crushed spot: short splinters every way.
@@ -7359,7 +7553,37 @@ Crack MakeCrack(float cx, float cy) {
         c.lines.push_back({cx + std::sin(a) * r0, cy - std::cos(a) * r0, cx + std::sin(a) * r1, cy - std::cos(a) * r1,
                            rnd(0.5f, 1.0f)});
     }
+    // Over the display: the panel beneath broken too.
+    if (cx > 0.0f && cy > 0.0f && cx < ui::kScreenW && cy < ui::kScreenH) {
+        const int blots = static_cast<int>(rnd(5.0f, 9.0f));
+        for (int i = 0; i < blots; ++i) {
+            const float a = rnd(0.0f, 6.2832f), d = rnd(0.0f, 16.0f);
+            c.blots.push_back({cx + std::cos(a) * d, cy + std::sin(a) * d, rnd(5.0f, 16.0f)});
+        }
+        static const uint32_t kDead[] = {0xD8FF30FF, 0xD830FF60, 0xD82850FF, 0xE8FFFFFF, 0xE0101010};
+        const int columns = static_cast<int>(rnd(1.0f, 3.99f));
+        for (int i = 0; i < columns; ++i) {
+            c.columns.push_back({std::clamp(cx + rnd(-40.0f, 40.0f), 2.0f, ui::kScreenW - 2.0f), rnd(1.0f, 2.6f),
+                                 kDead[static_cast<int>(rnd(0.0f, 4.99f))]});
+        }
+    }
     return c;
+}
+
+// A blow with the phone can break its glass: about one in three does, and
+// the third since the last break always does. Somewhere on the front.
+void CrackFromHit() {
+    if (!config::Get().features.cracks) return;
+    static std::mt19937 rng(GetTickCount());
+    static int since = 0;
+    if (++since < 3 && std::uniform_real_distribution<float>(0.0f, 1.0f)(rng) > 0.33f) return;
+    since = 0;
+    const GlassArea& area = g_glassArea;
+    const float x = std::uniform_real_distribution<float>(area.left + 20.0f, area.right - 20.0f)(rng);
+    const float y = std::uniform_real_distribution<float>(area.top + 20.0f, area.bottom - 20.0f)(rng);
+    if (g_cracks.size() >= 6) g_cracks.erase(g_cracks.begin());
+    g_cracks.push_back(MakeCrack(x, y));
+    logfile::Line("phone: the glass cracked from a blow at %.0f, %.0f", x, y);
 }
 
 // A press on the screen, in points. Ten close together and quick break the
@@ -7396,7 +7620,9 @@ void NotePress(float x, float y) {
 // the game's own blood (models\particle.txd's bloodpool_64). It stays a
 // minute - three quarters of it as it landed, then fading away.
 
-constexpr ULONGLONG kBloodHold = 45000, kBloodFade = 15000;
+// [Features] BloodSeconds: three quarters held, the last quarter fading.
+ULONGLONG BloodHold() { return static_cast<ULONGLONG>(config::Get().features.bloodSeconds * 750.0f); }
+ULONGLONG BloodFade() { return static_cast<ULONGLONG>(config::Get().features.bloodSeconds * 250.0f); }
 constexpr uintptr_t kPedPool = 0xB74490;  // CPools::ms_pPedPool
 constexpr size_t kPedPoolStride = 0x7C4;  // sizeof(CCopPed), the pool's slot
 constexpr size_t kPedLastWeapon = 0x760, kPedLastDamager = 0x764;
@@ -7404,14 +7630,12 @@ constexpr size_t kPedLastWeapon = 0x760, kPedLastDamager = 0x764;
 struct Blood {
     float x, y, size, turn;
     ULONGLONG at;
-    struct Drop { float x, y, r; } drops[14];
-    int dropCount;
-    struct Run { float x, y, len, width; } runs[2];
-    int runCount;
+    float wash = 0.0f;  // how much rain has thinned and washed it off, 0 to 1
 };
 std::vector<Blood> g_blood;
 
 void Splatter(float strength) {
+    if (!config::Get().features.blood) return;
     static std::mt19937 rng(GetTickCount());
     auto r = [&](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
     Blood b{};
@@ -7421,21 +7645,18 @@ void Splatter(float strength) {
     b.size = r(70.0f, 120.0f) * std::clamp(strength, 0.7f, 1.4f);
     b.turn = r(0.0f, 360.0f);
     b.at = GetTickCount64();
-    b.dropCount = static_cast<int>(r(7.0f, 14.99f));
-    for (int i = 0; i < b.dropCount; ++i) {
-        const float a = r(0.0f, 6.2832f), d = b.size * r(0.35f, 1.1f);
-        b.drops[i] = {b.x + std::cos(a) * d, b.y + std::sin(a) * d, r(1.5f, 6.0f)};
-    }
-    b.runCount = static_cast<int>(r(0.0f, 2.99f));
-    for (int i = 0; i < b.runCount; ++i) {
-        b.runs[i] = {b.x + r(-b.size * 0.25f, b.size * 0.25f), b.y + r(0.0f, b.size * 0.2f), r(30.0f, 90.0f), r(2.5f, 4.5f)};
-    }
+    // Just the splash: droplets round it and runs down from it looked
+    // scattered and wrong on the small screen.
     if (g_blood.size() >= 10) g_blood.erase(g_blood.begin());
     g_blood.push_back(b);
     logfile::Line("phone: blood on the phone");
 }
 
-// Each frame: anyone just hurt by CJ with the phone in his hand.
+// Each frame: anyone just hurt by CJ while the phone is the weapon in his
+// hand, close enough to have been hit with it. What weapon the game records
+// for the blow is not relied on (a loaded weapon can be booked under the
+// melee type it is built on), only who struck it and that the phone was in
+// his hand.
 void BloodFrame() {
     const int type = PhoneWeaponType();
     const uintptr_t player = PlayerPed();
@@ -7446,7 +7667,21 @@ void BloodFrame() {
     const auto* flags = *reinterpret_cast<const uint8_t* const*>(pool + 4);
     const int size = *reinterpret_cast<const int*>(pool + 8);
     if (!objects || !flags || size <= 0 || size > 100000) return;
+    // CJ is in the pool himself: where he sits says whether its slots are
+    // the size this reads them at.
+    static int checked = 0;
+    if (!checked) {
+        const bool fits = player >= objects && (player - objects) % kPedPoolStride == 0 &&
+                          (player - objects) / kPedPoolStride < static_cast<uintptr_t>(size);
+        checked = fits ? 1 : -1;
+        logfile::Line("phone: blood - %d people in the game's list, CJ %s in it where expected", size,
+                      fits ? "is" : "is NOT");
+    }
+    if (checked < 0) return;
     if (static_cast<int>(seen.size()) != size) seen.assign(size, {0, 0.0f});
+    const bool wielding = CurrentSlot(player) == kPhoneWeaponSlot &&
+                          *reinterpret_cast<const int*>(player + kPedWeapons + kPhoneWeaponSlot * kWeaponSize) == type;
+    const float* me = reinterpret_cast<const float*>(*reinterpret_cast<const uintptr_t*>(player + 0x14) + 0x30);
     for (int i = 0; i < size; ++i) {
         if (flags[i] & 0x80) {
             seen[i] = {0, 0.0f};
@@ -7455,9 +7690,22 @@ void BloodFrame() {
         const uintptr_t ped = objects + i * kPedPoolStride;
         const float health = *reinterpret_cast<const float*>(ped + kPedHealth);
         if (ped != player && seen[i].first == ped && health < seen[i].second - 0.5f &&
-            *reinterpret_cast<const uintptr_t*>(ped + kPedLastDamager) == player &&
-            *reinterpret_cast<const int*>(ped + kPedLastWeapon) == type) {
-            Splatter((seen[i].second - health) / 10.0f);
+            *reinterpret_cast<const uintptr_t*>(ped + kPedLastDamager) == player) {
+            const uintptr_t matrix = *reinterpret_cast<const uintptr_t*>(ped + 0x14);
+            const float* at = matrix ? reinterpret_cast<const float*>(matrix + 0x30) : nullptr;
+            const float reach = at && *reinterpret_cast<const uintptr_t*>(player + 0x14)
+                                    ? std::hypot(at[0] - me[0], at[1] - me[1]) : 99.0f;
+            static int told = 0;
+            if (told < 5) {
+                ++told;
+                logfile::Line("phone: blood - someone hurt by CJ (weapon %d, %.1f m away, phone %s)",
+                              *reinterpret_cast<const int*>(ped + kPedLastWeapon), reach,
+                              wielding ? "in hand" : "not in hand");
+            }
+            if (wielding && reach < 3.5f) {
+                Splatter((seen[i].second - health) / 10.0f);
+                CrackFromHit();
+            }
         }
         seen[i] = {ped, health};
     }
@@ -7466,7 +7714,9 @@ void BloodFrame() {
 void DrawBlood() {
     const ULONGLONG now = GetTickCount64();
     g_blood.erase(std::remove_if(g_blood.begin(), g_blood.end(),
-                                 [&](const Blood& b) { return now - b.at > kBloodHold + kBloodFade; }),
+                                 [&](const Blood& b) {
+                                     return now - b.at > BloodHold() + BloodFade() || b.wash >= 1.0f;
+                                 }),
                   g_blood.end());
     if (g_blood.empty()) return;
     static int particles = -2;
@@ -7474,12 +7724,17 @@ void DrawBlood() {
     const uintptr_t pool = particles >= 0 ? sprite::Find(particles, "bloodpool_64") : 0;
     for (const Blood& b : g_blood) {
         const ULONGLONG age = now - b.at;
-        const float a = age < kBloodHold ? 1.0f : std::max(0.0f, 1.0f - static_cast<float>(age - kBloodHold) / kBloodFade);
-        // Drying darker as it ages.
-        const float dry = std::min(1.0f, age / 30000.0f);
-        const uint32_t red = static_cast<uint32_t>(150 - 60 * dry);
+        const float a = age < BloodHold() ? 1.0f
+                                          : std::max(0.0f, 1.0f - static_cast<float>(age - BloodHold()) /
+                                                                    std::max<ULONGLONG>(1, BloodFade()));
+        // Drying darker as it ages; rain thins it out, paler and more
+        // see-through, before it is gone.
+        const float dry = std::min(1.0f, age / 30000.0f) * (1.0f - b.wash);
+        const uint32_t red = static_cast<uint32_t>(150 - 60 * dry + 60 * b.wash);
+        const uint32_t pale = static_cast<uint32_t>(4 + 70 * b.wash);
+        const float thin = 1.0f - 0.75f * b.wash;
         auto colour = [&](float alpha) {
-            return (static_cast<uint32_t>(alpha * a) << 24) | (red << 16) | 0x0404;
+            return (static_cast<uint32_t>(alpha * a * thin) << 24) | (red << 16) | (pale << 8) | pale;
         };
         // It lands in a blink.
         const float grow = std::min(1.0f, age / 70.0f);
@@ -7493,19 +7748,6 @@ void DrawBlood() {
         } else {
             ui::Image("disc", b.x - sz * 0.3f, b.y - sz * 0.3f, sz * 0.6f, sz * 0.6f, colour(220.0f));
         }
-        for (int i = 0; i < b.dropCount; ++i) {
-            const auto& d = b.drops[i];
-            const float x = b.x + (d.x - b.x) * grow, y = b.y + (d.y - b.y) * grow;
-            ui::Image("disc", x - d.r, y - d.r, d.r * 2, d.r * 2, colour(225.0f));
-        }
-        // Runs creep down the glass over the first few seconds.
-        for (int i = 0; i < b.runCount; ++i) {
-            const auto& r = b.runs[i];
-            const float len = r.len * std::min(1.0f, age / 6000.0f);
-            if (len < 1.0f) continue;
-            ui::Needle(r.x, r.y, 3.14159f, len, 0.0f, r.width, colour(215.0f));
-            ui::Image("disc", r.x - r.width * 0.7f, r.y + len - r.width * 0.7f, r.width * 1.4f, r.width * 1.4f, colour(225.0f));
-        }
     }
 }
 
@@ -7514,6 +7756,8 @@ void DrawCracks() {
     g_cracks.erase(std::remove_if(g_cracks.begin(), g_cracks.end(),
                                   [&](const Crack& c) { return now - c.at > CrackHold() + CrackFade(); }),
                    g_cracks.end());
+    const auto& features = config::Get().features;
+    const float wet = features.rain ? std::min(1.0f, RainOnPhone() * features.rainAmount) : 0.0f;
     for (const Crack& c : g_cracks) {
         const ULONGLONG age = now - c.at;
         const ULONGLONG hold = CrackHold(), fade = std::max<ULONGLONG>(1, CrackFade());
@@ -7523,6 +7767,17 @@ void DrawCracks() {
         auto faded = [&](uint32_t argb) {
             return (static_cast<uint32_t>((argb >> 24) * a) << 24) | (argb & 0xFFFFFF);
         };
+        // The panel under it: the dead columns, then the spill of black with
+        // its oily purple edge, spreading out over the first second.
+        const float spill = std::min(1.0f, age / 900.0f);
+        for (const Crack::Column& col : c.columns) {
+            ui::Fill(col.x - col.width / 2, 0.0f, col.width, ui::kScreenH, faded(col.argb));
+        }
+        for (const Crack::Blot& bl : c.blots) {
+            const float r = bl.r * spill;
+            ui::Image("disc", bl.x - r * 1.25f, bl.y - r * 1.25f, r * 2.5f, r * 2.5f, faded(0x60402070));
+            ui::Image("disc", bl.x - r, bl.y - r, r * 2.0f, r * 2.0f, faded(0xF0050508));
+        }
         for (const Crack::Shard& sh : c.shards) {
             if (std::hypot(sh.x[0] - c.x, sh.y[0] - c.y) > reach) continue;
             auto P = [](float x, float y) { return sprite::Corner{ui::ToPixelX(x), ui::ToPixelY(y)}; };
@@ -7539,6 +7794,124 @@ void DrawCracks() {
             // The shadowed side of the break, then the edge catching the light.
             ui::Needle(l.x0 + 0.45f, l.y0 + 0.55f, angle, len, 0.0f, l.width + 0.6f, faded(0x78000000));
             ui::Needle(l.x0, l.y0, angle, len, 0.0f, l.width * 0.55f, faded(0xD0FFFFFF));
+            // Blood near it runs into the break and stains it dark red.
+            float stain = 0.0f;
+            const float mx = (l.x0 + l.x1) / 2, my = (l.y0 + l.y1) / 2;
+            for (const Blood& b : g_blood) {
+                const float d = std::hypot(mx - b.x, my - b.y);
+                const float spread = b.size * (0.75f + 0.5f * std::min(1.0f, (now - b.at) / 8000.0f));
+                if (d < spread) stain = std::max(stain, (1.0f - d / spread) * (1.0f - b.wash));
+            }
+            if (stain > 0.02f) {
+                ui::Needle(l.x0, l.y0, angle, len, 0.0f, l.width + 0.9f,
+                           faded((static_cast<uint32_t>(220.0f * std::min(1.0f, stain * 1.6f)) << 24) | 0x700606));
+            }
+            // In the rain, water stands in the break and glints along it.
+            if (wet > 0.0f) {
+                ui::Needle(l.x0 - 0.3f, l.y0 - 0.3f, angle, len, 0.0f, l.width * 0.4f,
+                           faded((static_cast<uint32_t>(110.0f * wet) << 24) | 0xDDEEFF));
+            }
+        }
+    }
+}
+
+// The cracks into the bend layer: each shard tipped its own way, each line
+// a fold across it, the crushed spot all ways at once.
+void BendCracks() {
+    const ULONGLONG now = GetTickCount64();
+    auto lean = [](float x, float y, float alpha) {
+        const uint32_t r = static_cast<uint32_t>(std::clamp(128.0f + x * 127.0f, 0.0f, 255.0f));
+        const uint32_t gr = static_cast<uint32_t>(std::clamp(128.0f + y * 127.0f, 0.0f, 255.0f));
+        return (static_cast<uint32_t>(std::clamp(alpha, 0.0f, 255.0f)) << 24) | (r << 16) | (gr << 8) | 0x80;
+    };
+    for (const Crack& c : g_cracks) {
+        const ULONGLONG age = now - c.at;
+        const ULONGLONG hold = CrackHold(), fade = std::max<ULONGLONG>(1, CrackFade());
+        const float a = age < hold ? 1.0f : std::max(0.0f, 1.0f - static_cast<float>(age - hold) / fade);
+        const float reach = std::min(1.0f, age / 90.0f) * 400.0f;
+        for (const Crack::Shard& sh : c.shards) {
+            if (std::hypot(sh.x[0] - c.x, sh.y[0] - c.y) > reach) continue;
+            auto P = [](float x, float y) { return sprite::Corner{ui::ToPixelX(x), ui::ToPixelY(y)}; };
+            sprite::Quad(ui::Tex("white"), P(sh.x[0], sh.y[0]), P(sh.x[1], sh.y[1]), P(sh.x[3], sh.y[3]),
+                         P(sh.x[2], sh.y[2]), lean(sh.leanX, sh.leanY, 230.0f * a));
+        }
+        for (const Crack::Line& l : c.lines) {
+            if (std::hypot(l.x0 - c.x, l.y0 - c.y) > reach) continue;
+            const float dx = l.x1 - l.x0, dy = l.y1 - l.y0, len = std::hypot(dx, dy);
+            if (len < 0.01f) continue;
+            // Across the break, the two sides lean apart.
+            ui::Needle(l.x0, l.y0, std::atan2(dx, -dy), len, 0.0f, l.width * 2.2f,
+                       lean(-dy / len * 0.7f, dx / len * 0.7f, 220.0f * a));
+        }
+        for (int i = 0; i < 6; ++i) {
+            const float r = 3.0f + i * 1.5f;
+            ui::Image("bend_drop", c.x - r, c.y - r, r * 2, r * 2, (static_cast<uint32_t>(150.0f * a) << 24) | 0xFFFFFF);
+        }
+    }
+}
+
+// Blood is thick: its splash is a low, broad lens.
+void BendBlood() {
+    const ULONGLONG now = GetTickCount64();
+    for (const Blood& b : g_blood) {
+        const float grow = std::min(1.0f, (now - b.at) / 70.0f), sz = b.size * grow * 0.75f;
+        ui::Image("bend_drop", b.x - sz / 2, b.y - sz / 2, sz, sz,
+                  (static_cast<uint32_t>(90.0f * (1.0f - b.wash)) << 24) | 0xFFFFFF);
+    }
+}
+
+// What the rain, the blood and the cracks do to one another, a frame on.
+// Rain thins blood and washes it off; a runner through blood carries it
+// down, red; a drop landing in blood takes its colour; a runner meeting a
+// crack catches on it, and follows the break down a way before it lets go.
+void GlassInteractions(float dt) {
+    static std::mt19937 rng(GetTickCount() ^ 0x5EED);
+    auto rnd = [](float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
+    const ULONGLONG now = GetTickCount64();
+    const auto& features = config::Get().features;
+    const float rain = features.rain ? std::min(1.0f, RainOnPhone() * features.rainAmount) : 0.0f;
+    for (Blood& b : g_blood) b.wash = std::min(1.0f, b.wash + rain * dt / 45.0f);
+    for (Drop& d : g_drops) {
+        for (Blood& b : g_blood) {
+            const float grow = std::min(1.0f, (now - b.at) / 70.0f);
+            const float dist = std::hypot(d.x - b.x, d.y - b.y);
+            if (dist > b.size * 0.45f * grow) continue;
+            const float thick = 1.0f - b.wash;
+            if (!d.landed) d.blood = std::max(d.blood, 0.45f * thick);
+            if (d.runner && d.speed > 0.0f) {
+                d.blood = std::min(1.0f, d.blood + dt * 3.0f * thick);
+                b.wash = std::min(1.0f, b.wash + dt * 0.12f);
+            }
+        }
+        d.landed = true;
+        if (!d.runner || d.speed <= 0.0f || d.followLeft > 0.0f || now < d.pauseUntil) continue;
+        // Did it cross a crack's line this frame?
+        for (const Crack& c : g_cracks) {
+            bool caught = false;
+            for (const Crack::Line& l : c.lines) {
+                if (l.width < 0.8f) continue;
+                const float ax = d.px, ay = d.py, bx = d.x, by = d.y;
+                const float cx = l.x0, cy = l.y0, ex = l.x1, ey = l.y1;
+                const float den = (bx - ax) * (ey - cy) - (by - ay) * (ex - cx);
+                if (std::fabs(den) < 1e-5f) continue;
+                const float t = ((cx - ax) * (ey - cy) - (cy - ay) * (ex - cx)) / den;
+                const float u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+                if (t < 0.0f || t > 1.0f || u < 0.0f || u > 1.0f) continue;
+                float fx = ex - cx, fy = ey - cy;
+                if (fy < 0.0f) {
+                    fx = -fx;
+                    fy = -fy;
+                }
+                const float fl = std::max(0.01f, std::hypot(fx, fy));
+                d.followX = fx / fl;
+                d.followY = fy / fl;
+                d.followLeft = rnd(6.0f, 22.0f);
+                d.pauseUntil = now + static_cast<ULONGLONG>(rnd(250.0f, 1200.0f));
+                d.speed *= 0.2f;
+                caught = true;
+                break;
+            }
+            if (caught) break;
         }
     }
 }
@@ -7813,7 +8186,9 @@ void Draw() {
     // The flat handset takes rain and cracks straight onto the picture; the
     // 3D one onto its glass layer, below.
     if (!inTexture) {
-        RainDrops(dt);
+        RainUpdate(dt);
+        GlassInteractions(dt);
+        DrawRain();
         DrawCracks();
     }
     ui::Flush();
@@ -7866,14 +8241,27 @@ void Draw() {
         pose.screenOnFront[3] = phone_art::kScreenBottom / phone_art::kBodyBottom;
         if (phone3d::BeginGlass(device, static_cast<int>(std::lround(frontW)), static_cast<int>(std::lround(frontH)))) {
             ui::SetScreen(sl - bodyLeft, st - y, g_ppp);
-            RainDrops(dt);
+            RainUpdate(dt);
+            GlassInteractions(dt);
+            DrawRain();
             DrawCracks();
             DrawBlood();
             ui::Flush();
             sprite::Flush();
             phone3d::EndGlass(device);
-            ui::SetScreen(sl, st, g_ppp);
             pose.glass = true;
+            // How it all bends the light, over the same front.
+            if (phone3d::BeginBend(device, static_cast<int>(std::lround(frontW)), static_cast<int>(std::lround(frontH)))) {
+                ui::SetScreen(sl - bodyLeft, st - y, g_ppp);
+                BendRain();
+                BendCracks();
+                BendBlood();
+                ui::Flush();
+                sprite::Flush();
+                phone3d::EndBend(device);
+                pose.bend = true;
+            }
+            ui::SetScreen(sl, st, g_ppp);
         }
         if (g.slide > 0.97f) {
             const float bodyBottom = y + texH * phone_art::kBodyBottom;

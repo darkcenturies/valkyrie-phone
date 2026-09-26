@@ -38,6 +38,14 @@ IDirect3DTexture9* ScreenTexture();
 bool BeginGlass(IDirect3DDevice9* device, int width, int height);
 void EndGlass(IDirect3DDevice9* device);
 
+// How what lies on the glass bends the light through it, drawn the same way
+// over the same area: each stroke's colour the way the glass leans there
+// (red across, green down, 128 upright), premultiplied by its alpha. Drops
+// are little lenses, the shards of a crack each tipped its own way. The
+// picture under the glass is seen through it, and the light catches it.
+bool BeginBend(IDirect3DDevice9* device, int width, int height);
+void EndBend(IDirect3DDevice9* device);
+
 struct Light {
     float dir[3];      // toward the sun: x right, y up, z out of the game's screen
     float sun[4];      // its colour, and strength
@@ -62,6 +70,7 @@ struct Pose {
     // right, bottom; and whether the glass layer was drawn this frame.
     float screenOnFront[4] = {0, 0, 1, 1};
     bool glass = false;
+    bool bend = false;  // the bend layer was drawn this frame
     // Fine scratches on the front glass from use, seen only where light
     // catches them: how many (0 none, 1 as shipped, up to 3), and the
     // pattern's seed.

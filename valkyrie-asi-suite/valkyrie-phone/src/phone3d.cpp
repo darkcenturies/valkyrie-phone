@@ -119,7 +119,9 @@ bool Parse(const std::vector<uint8_t>& b, std::vector<Vertex>& verts, std::vecto
         for (int k = 0; k < kParts; ++k) {
             if (_stricmp(textures[m].c_str(), kPartTextures[k]) == 0) part = k;
         }
-        if (part < 0) return false;
+        // A part the screen never shows - the insides behind the shell
+        // (battery, board) - is left out rather than the model refused.
+        if (part < 0) continue;
         byPart[part].insert(byPart[part].end(), {v0, v1, v2});
     }
     return true;
@@ -202,7 +204,9 @@ float4 screenOnFront : register(c12);  // where the screen is on the front: left
 sampler2D glass : register(s2);        // what lies on the glass, premultiplied, over the whole front
 sampler2D wear : register(s3);         // scratches on the glass, over the whole front
 float4 worn : register(c13);
-float4 liveWindow : register(c14);  // the live render's camera: tan of half its view across, up           // on (0: off), how wide the sun catches them, and how bright in the sun and in what the glass mirrors
+float4 liveWindow : register(c14);
+sampler2D bendMap : register(s4);   // how the glass leans where things lie on it
+float4 bendParams : register(c15);  // on, how far the picture shifts, how far the light turns  // the live render's camera: tan of half its view across, up           // on (0: off), how wide the sun catches them, and how bright in the sun and in what the glass mirrors
 float3 schlick(float3 f0, float3 f90, float c) { float k = 1 - c, k2 = k * k; return f0 + (f90 - f0) * (k2 * k2 * k); }
 // The rain and cracks lying on the front glass, over what is under it
 // (lit.z: 1 for the parts that are the front).
@@ -228,7 +232,17 @@ float4 main(float2 uv : TEXCOORD0, float3 n : TEXCOORD1, float2 vpos : VPOS) : C
     // smoothed into the rounded rim, which bent what it mirrors into swirls:
     // the glass takes the phone's own facing instead.
     if (lit.w > 0.5 && dot(n, axisOut.xyz) > 0.3) n = axisOut.xyz;
-    float4 a = tex2D(albedo, uv);
+    // What lies on the glass bends the light: a drop is a little lens that
+    // shows the picture under it shifted and turned over, a shard of a crack
+    // shows its piece a little out of line - and each catches the sun.
+    float2 lean = 0;
+    if (bendParams.x > 0.5 && lit.z > 0.5) {
+        const float2 at = lit.x > 0.5 ? lerp(screenOnFront.xy, screenOnFront.zw, uv) : uv;
+        const float4 bd = tex2D(bendMap, at);
+        lean = (bd.rg - 0.5 * bd.a) * 2;
+        n = normalize(n + (axisRight.xyz * lean.x - axisUp.xyz * lean.y) * bendParams.z);
+    }
+    float4 a = tex2D(albedo, lit.x > 0.5 ? saturate(uv - lean * bendParams.y) : uv);
     float3 v = normalize(float3(eye.x - vpos.x, vpos.y - eye.y, eye.z));
     float3 l = normalize(lightDir.xyz);
     float3 h = normalize(l + v);
@@ -379,6 +393,8 @@ bool g_shadersFailed = false;
 IDirect3DTexture9* g_screen = nullptr;
 int g_screenSize[2] = {};
 IDirect3DTexture9* g_glass = nullptr;
+IDirect3DTexture9* g_bend = nullptr;
+int g_bendSize[2] = {};
 int g_glassSize[2] = {};
 IDirect3DTexture9* g_target = nullptr;
 IDirect3DSurface9* g_depth = nullptr;
@@ -895,6 +911,46 @@ bool BeginGlass(IDirect3DDevice9* d, int w, int h) {
     return true;
 }
 
+bool BeginBend(IDirect3DDevice9* d, int w, int h) {
+    if (w <= 0 || h <= 0) return false;
+    if (g_bend && (g_bendSize[0] != w || g_bendSize[1] != h)) Release(g_bend);
+    if (!g_bend) {
+        if (FAILED(d->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &g_bend,
+                                    nullptr)))
+            return false;
+        g_bendSize[0] = w;
+        g_bendSize[1] = h;
+    }
+    IDirect3DSurface9* surface = nullptr;
+    if (FAILED(g_bend->GetSurfaceLevel(0, &surface))) return false;
+    Release(g_savedTarget);
+    Release(g_savedDepth);
+    d->GetRenderTarget(0, &g_savedTarget);
+    d->GetDepthStencilSurface(&g_savedDepth);
+    d->GetViewport(&g_savedViewport);
+    const HRESULT hr = d->SetRenderTarget(0, surface);
+    surface->Release();
+    if (FAILED(hr)) {
+        Release(g_savedTarget);
+        Release(g_savedDepth);
+        return false;
+    }
+    d->SetDepthStencilSurface(nullptr);
+    // Nothing leaning anywhere: each stroke then lays its lean over what is
+    // under it, premultiplied, its alpha built up as coverage.
+    d->Clear(0, nullptr, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0);
+    d->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
+    d->SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE);
+    d->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
+    d->SetRenderState(D3DRS_BLENDOPALPHA, D3DBLENDOP_ADD);
+    return true;
+}
+
+void EndBend(IDirect3DDevice9* d) {
+    d->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+    EndScreen(d);
+}
+
 void EndGlass(IDirect3DDevice9* d) {
     d->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
     EndScreen(d);
@@ -928,6 +984,7 @@ bool Prepare(IDirect3DDevice9* d, const Pose& pose) {
 void ReleaseDeviceObjects() {
     Release(g_screen);
     Release(g_glass);
+    Release(g_bend);
     Release(g_target);
     Release(g_depth);
     Release(g_msaa);
@@ -1062,6 +1119,16 @@ bool Draw(IDirect3DDevice9* d, const Pose& pose, const Light& light, IDirect3DTe
         d->SetPixelShaderConstantF(12, pose.screenOnFront, 1);
         const bool glassOn = pose.glass && g_glass;
         d->SetTexture(2, glassOn ? g_glass : nullptr);
+        const bool bendOn = glassOn && pose.bend && g_bend;
+        const float bend[4] = {bendOn ? 1.0f : 0.0f, 0.03f, 0.9f, 0.0f};
+        d->SetPixelShaderConstantF(15, bend, 1);
+        d->SetTexture(4, bendOn ? g_bend : nullptr);
+        d->SetSamplerState(4, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+        d->SetSamplerState(4, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+        d->SetSamplerState(4, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        d->SetSamplerState(4, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        d->SetSamplerState(4, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+        d->SetSamplerState(4, D3DSAMP_SRGBTEXTURE, FALSE);
         const bool wornOn = pose.wear > 0 && Wear(d, std::min(pose.wear, 3.0f), pose.wearSeed, pose.wearStrong);
         const float worn[4] = {wornOn ? 1.0f : 0.0f, pose.wearStrong ? 6.0f : 16.0f, pose.wearStrong ? 1.3f : 0.6f,
                                pose.wearStrong ? 0.35f : 0.07f};
@@ -1128,6 +1195,11 @@ bool Draw(IDirect3DDevice9* d, const Pose& pose, const Light& light, IDirect3DTe
         d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
         d->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
         d->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+        // The layers are the phone's alone: nothing of them left bound for
+        // the game's own drawing.
+        d->SetTexture(2, nullptr);
+        d->SetTexture(3, nullptr);
+        d->SetTexture(4, nullptr);
         d->SetTexture(0, g_target);
         d->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
         d->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);

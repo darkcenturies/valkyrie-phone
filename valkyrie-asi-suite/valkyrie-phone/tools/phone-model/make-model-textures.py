@@ -141,6 +141,92 @@ def lens():
     img.save(os.path.join(OUT, "vp_lens.png"))
 
 
+# The insides, never seen in the game (the shell closes over them) - there
+# for the model's own sake, and for pictures of it taken apart.
+
+
+def battery():
+    """The cell: silver foil under a black printed label."""
+    W, H = 256, 512
+    rng = random.Random(3)
+    img = Image.new("RGB", (W, H), (176, 178, 184))
+    d = ImageDraw.Draw(img)
+    for y in range(0, H, 2):
+        c = 170 + rng.randint(-8, 8)
+        d.line((0, y, W, y), fill=(c, c + 2, c + 6))
+    d.rounded_rectangle((18, 40, W - 18, H - 40), radius=10, fill=(24, 24, 28))
+    try:
+        big = ImageFont.truetype("arialbd.ttf", 30)
+        mid = ImageFont.truetype("arialbd.ttf", 17)
+        small = ImageFont.truetype("arial.ttf", 13)
+    except OSError:
+        big = mid = small = ImageFont.load_default()
+    d.text((W / 2, 110), "iFruit", font=big, fill=(235, 235, 235), anchor="mm")
+    d.text((W / 2, 160), "Li-ion Polymer Battery", font=mid, fill=(220, 220, 220), anchor="mm")
+    for i, line in enumerate(["3.7 V   1400 mAh   5.2 Wh", "Do not puncture, crush or burn.",
+                              "Made in San Andreas", "Model  VP-1407"]):
+        d.text((W / 2, 215 + i * 26), line, font=small, fill=(190, 190, 190), anchor="mm")
+    for i in range(46):  # a barcode
+        w = rng.choice((1, 1, 2, 3))
+        x = 58 + i * 3
+        d.rectangle((x, 360, x + w - 1, 410), fill=(230, 230, 230))
+    d.text((W / 2, 425), "0 07410 28 20071", font=small, fill=(200, 200, 200), anchor="mm")
+    img.save(os.path.join(OUT, "vp_battery.png"))
+
+
+def board():
+    """The logic board: green solder mask, copper traces and vias."""
+    W = H = 256
+    rng = random.Random(11)
+    img = Image.new("RGB", (W, H), (18, 92, 48))
+    d = ImageDraw.Draw(img)
+    for _ in range(90):
+        x, y = rng.randrange(W), rng.randrange(H)
+        for _ in range(rng.randint(2, 5)):
+            if rng.random() < 0.5:
+                nx, ny = x + rng.randint(-60, 60), y
+            else:
+                nx, ny = x, y + rng.randint(-60, 60)
+            d.line((x, y, nx, ny), fill=(40, 140, 70), width=2)
+            x, y = nx, ny
+        d.ellipse((x - 2, y - 2, x + 2, y + 2), fill=(200, 170, 80))
+    for _ in range(40):
+        x, y = rng.randrange(W), rng.randrange(H)
+        d.rectangle((x, y, x + 5, y + 3), fill=(150, 120, 60))
+    try:
+        f = ImageFont.truetype("arial.ttf", 11)
+    except OSError:
+        f = ImageFont.load_default()
+    d.text((8, H - 16), "VP M68  820-2071-A", font=f, fill=(230, 230, 220))
+    img.save(os.path.join(OUT, "vp_board.png"))
+
+
+def chip():
+    """A processor: black epoxy, a printed part number, a dot at pin one."""
+    img = Image.new("RGB", (64, 64), (20, 20, 22))
+    d = ImageDraw.Draw(img)
+    try:
+        f = ImageFont.truetype("arialbd.ttf", 9)
+    except OSError:
+        f = ImageFont.load_default()
+    d.text((32, 24), "VK-A1", font=f, fill=(170, 170, 170), anchor="mm")
+    d.text((32, 38), "412 MHz", font=f, fill=(140, 140, 140), anchor="mm")
+    d.ellipse((6, 6, 10, 10), fill=(60, 60, 64))
+    img.save(os.path.join(OUT, "vp_chip.png"))
+
+
+def shield():
+    """The shield cans and frames: brushed, darker steel."""
+    rng = random.Random(5)
+    img = Image.new("L", (64, 64))
+    px = img.load()
+    for y in range(64):
+        row = rng.uniform(-6, 6)
+        for x in range(64):
+            px[x, y] = max(0, min(255, int(128 + row + rng.uniform(-5, 5))))
+    img.convert("RGB").save(os.path.join(OUT, "vp_shield.png"))
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     front()
@@ -150,4 +236,8 @@ if __name__ == "__main__":
     solid("vp_black", (22, 22, 24))
     buttons()
     lens()
+    battery()
+    board()
+    chip()
+    shield()
     print("textures in", os.path.normpath(OUT))

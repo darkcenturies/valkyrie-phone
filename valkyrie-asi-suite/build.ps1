@@ -129,7 +129,7 @@ $targets = @(
         # own artwork travels as valkyrie-phone.txd, packed below.
         Name = "valkyrie-phone"
         Module = "valkyrie-phone"
-        ModuleSources = @("main_phone.cpp", "phone.cpp", "viewfinder.cpp", "phone_data.cpp", "services.cpp", "ui.cpp", "arcade.cpp", "duality.cpp", "bumble.cpp", "uranus.cpp", "spacemonkey.cpp", "web.cpp", "config.cpp", "sound.cpp", "picture.cpp", "phone_model.cpp", "phone3d.cpp", "bundle.cpp")
+        ModuleSources = @("main_phone.cpp", "phone.cpp", "viewfinder.cpp", "phone_data.cpp", "services.cpp", "ui.cpp", "arcade.cpp", "duality.cpp", "bumble.cpp", "uranus.cpp", "spacemonkey.cpp", "web.cpp", "config.cpp", "sound.cpp", "picture.cpp", "phone_model.cpp", "phone3d.cpp", "bundle.cpp", "coverage.cpp")
         # The Maps app's map is drawn by the radar's own renderer, carried in
         # the phone - the map only, not the HUD radar (see radar_start.h).
         ExtraSources = @("valkyrie-radar\src\radar_start.cpp", "valkyrie-radar\src\radar3d.cpp", "valkyrie-radar\src\router.cpp")
@@ -187,6 +187,9 @@ foreach ($targetSpec in $targets) {
         & (Join-Path $root "tools\pack-phone-txd.ps1") -Source (Join-Path $root "valkyrie-phone\assets\model\textures") -Output $modelTxd
         $bundleFiles.Add(@("valkyrie-phone-model.dff", (Join-Path $root "valkyrie-phone\assets\model\valkyrie-phone-model.dff")))
         $bundleFiles.Add(@("valkyrie-phone-model.txd", $modelTxd))
+        # The signal the map's masts give, cell by cell (tools\signal-coverage).
+        $signal = Join-Path $root "valkyrie-phone\assets\signal\valkyrie-signal.bin"
+        if (Test-Path -LiteralPath $signal) { $bundleFiles.Add(@("valkyrie-signal.bin", $signal)) }
         foreach ($kind in "ringtones", "texttones") {
             Get-ChildItem -LiteralPath (Join-Path $root "valkyrie-phone\assets\tones\$kind") -Filter *.wav | Sort-Object Name |
                 ForEach-Object { $bundleFiles.Add(@("valkyrie-phone-tones\$kind\$($_.Name)", $_.FullName)) }

@@ -165,10 +165,16 @@ back_y = -0.6
 shell_size = (W, T - 1.2, H)
 cap_h = H * 0.15
 cut_box = helper(box("cap cut", (W + 4, T + 4, cap_h * 2), (0, back_y, -H / 2), "vp_back"))
+# Hollow, as the real one is: a 1 mm wall, open to the front, where the
+# insides sit.
+BACK_WALL = -T / 2 + 1.1
+cavity = helper(box("cavity", (W - 3.0, 12.0, H - 3.0), (0, BACK_WALL + 6.0, 0), "vp_back", corner=CORNER - 1.5))
 back = box("back", shell_size, (0, back_y, 0), "vp_back", corner=CORNER, edge=3.2, edge_segs=4)
 boolean(back, cut_box, "DIFFERENCE")
+boolean(back, cavity, "DIFFERENCE")
 cap = box("antenna cap", shell_size, (0, back_y, 0), "vp_black", corner=CORNER, edge=3.2, edge_segs=4)
 boolean(cap, cut_box, "INTERSECT")
+boolean(cap, cavity, "DIFFERENCE")
 
 # The polished rim round the front.
 rim = box("rim", (W, 1.6, H), (0, T / 2 - 1.0, 0), "vp_chrome", corner=CORNER, edge=0.5)
@@ -204,6 +210,27 @@ side_button("sleep button", SLEEP, -1, "vp_chrome")
 # The camera, top left of the back as it is seen from behind.
 cylinder("camera", 2.6, 0.6, (-W / 2 + 10.0, -T / 2 - 0.05, H / 2 - 10.0), "vp_lens")
 
+# The insides. Never seen in the game - the shell and the glass close over
+# them - and kept to plain blocks, some 300 vertices in all, so the model
+# stays as light as a weapon's. There for the model's own sake, and for
+# pictures of it taken apart. Each is laid out as in the first iPhone: the
+# display's module under the glass, the logic board across the top half
+# with the camera behind it, the battery below, the speaker and the dock
+# connector at the bottom under the antenna cap.
+screen_w, screen_h = abs(fx(su1) - fx(su0)), abs(fz(sv1) - fz(sv0))
+screen_x, screen_z = (fx(su0) + fx(su1)) / 2, (fz(sv0) + fz(sv1)) / 2
+box("lcd module", (screen_w + 3.0, 2.0, screen_h + 3.0), (screen_x, 4.0, screen_z), "vp_shield")
+box("logic board", (W - 10.0, 1.0, H * 0.34), (0, -1.6, H * 0.22), "vp_board")
+box("processor", (12.0, 1.0, 12.0), (8.0, -0.6, H * 0.30), "vp_chip")
+box("memory", (10.0, 1.0, 8.0), (-10.0, -0.6, H * 0.31), "vp_chip")
+box("shield can", (24.0, 1.2, 13.0), (0, -0.5, H * 0.12), "vp_shield")
+box("camera module", (8.0, 3.0, 8.0), (-W / 2 + 10.0, BACK_WALL + 1.5, H / 2 - 10.0), "vp_shield")
+box("sim tray", (14.0, 1.6, 2.4), (16.0, -2.8, H / 2 - 3.0), "vp_chrome")
+box("battery", (W - 12.0, 3.4, H * 0.44), (0, BACK_WALL + 1.7, -H * 0.14), "vp_battery")
+box("speaker", (13.0, 2.4, 5.0), (-17.0, -3.5, -H / 2 + 8.0), "vp_shield")
+box("dock connector", (18.0, 3.0, 3.0), (0, -2.0, -H / 2 + 3.4), "vp_shield")
+cylinder("vibration motor", 4.0, 2.4, (18.0, -3.6, -H / 2 + 12.0), "vp_shield")
+
 for ob in HELPERS:
     ob.hide_viewport = True
     ob.hide_render = True
@@ -213,10 +240,19 @@ for ob in HELPERS:
 # ---------------------------------------------------------------------------
 
 
-def uv(texture, x, y, z):
+# The insides' pictures (the battery's label, the board) cover each part
+# whole, from its own corners.
+LOCAL = ("vp_battery", "vp_board", "vp_chip", "vp_shield")
+PART_BOUNDS = {}
+
+
+def uv(texture, x, y, z, part=None):
     """Where a point of each kind of part is on its texture: flat across the
     front for the front and screen, across the back for the back, and down
     the length for the rest."""
+    if texture in LOCAL and part in PART_BOUNDS:
+        (x0, z0), (x1, z1) = PART_BOUNDS[part]
+        return 1.0 - (x - x0) / max(x1 - x0, 1e-3), 1.0 - (z - z0) / max(z1 - z0, 1e-3)
     u, v = 0.5 - x / W, 0.5 - z / H  # the body as the front sees it
     if texture == "vp_screen":
         return (u - su0) / (su1 - su0), (v - sv0) / (sv1 - sv0)
@@ -226,6 +262,129 @@ def uv(texture, x, y, z):
 
 
 depsgraph = bpy.context.evaluated_depsgraph_get()
+for ob in bpy.data.objects:
+    if ob.type == "MESH" and ob not in HELPERS:
+        ev = ob.evaluated_get(depsgraph)
+        pts = [ev.matrix_world @ v.co for v in ev.to_mesh().vertices]
+        PART_BOUNDS[ob.name] = ((min(q.x for q in pts), min(q.z for q in pts)), (max(q.x for q in pts), max(q.z for q in pts)))
+        ev.to_mesh_clear()
+
+ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+if "explode" in ARGS:
+    # "-- [detailed] explode <out.png> [<screen.png>]": the parts laid out
+    # along the phone's depth, front to back, each where it sits in the phone
+    # and only moved straight out - pushed back together they are the phone.
+    import json
+    from bpy_extras.object_utils import world_to_camera_view
+    from mathutils import Vector
+    out = ARGS[ARGS.index("explode") + 1]
+    home = ARGS[ARGS.index("explode") + 2] if len(ARGS) > ARGS.index("explode") + 2 else None
+    tex_dir = os.path.normpath(os.path.join(HERE, "..", "..", "assets", "model", "textures"))
+    LAYERS = [("glass", ["front"]), ("display", ["screen"]), ("rim", ["rim"]), ("lcd", ["lcd module"]),
+              ("board", ["logic board", "processor", "memory", "shield can", "camera module", "sim tray", "speaker",
+                         "dock connector", "vibration motor"]),
+              ("battery", ["battery"]),
+              ("back", ["back", "antenna cap", "ring switch", "volume up", "volume down", "sleep button", "camera"])]
+    GAP = 26.0
+    shine = {"vp_chrome": (1.0, 0.12), "vp_front": (0.0, 0.05), "vp_back": (0.9, 0.35), "vp_lens": (0.0, 0.05),
+             "vp_shield": (0.8, 0.4), "vp_battery": (0.5, 0.4), "vp_board": (0.0, 0.55), "vp_chip": (0.0, 0.4)}
+    for name, m in MATERIALS.items():
+        m.use_nodes = True
+        bsdf = m.node_tree.nodes["Principled BSDF"]
+        tex = m.node_tree.nodes.new("ShaderNodeTexImage")
+        path = home if (name == "vp_screen" and home) else os.path.join(tex_dir, name + ".png")
+        tex.image = bpy.data.images.load(path)
+        m.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        metal, rough = shine.get(name, (0.0, 0.5))
+        bsdf.inputs["Metallic"].default_value = metal
+        bsdf.inputs["Roughness"].default_value = rough
+        if name == "vp_screen":
+            m.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
+            bsdf.inputs["Emission Strength"].default_value = 1.4
+        if name == "vp_front":
+            bsdf.inputs["Alpha"].default_value = 0.5
+            bsdf.inputs["Coat Weight"].default_value = 1.0
+    layer_of = {part: (i, layer) for i, (layer, parts) in enumerate(LAYERS) for part in parts}
+    placed = {}
+    for ob in list(bpy.data.objects):
+        if ob.type != "MESH" or ob in HELPERS:
+            continue
+        ev = ob.evaluated_get(depsgraph)
+        me = bpy.data.meshes.new_from_object(ev)
+        me.transform(ev.matrix_world)
+        # Only this mapping: a primitive's own default one would be the one
+        # its texture reads.
+        while me.uv_layers:
+            me.uv_layers.remove(me.uv_layers[0])
+        layer = me.uv_layers.new()
+        for poly in me.polygons:
+            tex = me.materials[poly.material_index].name if me.materials else "vp_black"
+            for li in poly.loop_indices:
+                co = me.vertices[me.loops[li].vertex_index].co
+                t = uv(tex, co.x, co.y, co.z, ob.name)
+                layer.data[li].uv = (t[0], 1.0 - t[1])
+        i, lname = layer_of.get(ob.name, (len(LAYERS) - 1, "back"))
+        nob = bpy.data.objects.new(ob.name + " apart", me)
+        bpy.context.scene.collection.objects.link(nob)
+        nob.location = (0, (len(LAYERS) - 1 - i) * GAP, 0)
+        placed.setdefault(lname, []).append(nob)
+        ob.hide_render = True
+    scene = bpy.context.scene
+    world = bpy.data.worlds.new("w")
+    scene.world = world
+    world.use_nodes = True
+    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.2, 0.21, 0.24, 1)
+    bpy.context.view_layer.update()
+    pts = [o.matrix_world @ v.co for objs in placed.values() for o in objs for v in o.data.vertices]
+    centre = sum(pts, Vector()) / len(pts)
+
+    def light(loc, energy, size=60):
+        ld = bpy.data.lights.new("l", "AREA")
+        ld.energy = energy * 6
+        ld.size = size
+        o = bpy.data.objects.new("l", ld)
+        scene.collection.objects.link(o)
+        o.location = centre + Vector(loc)
+        o.rotation_euler = (centre - o.location).to_track_quat("-Z", "Y").to_euler()
+
+    light((-90, 120, 90), 6000)
+    light((110, 30, 70), 3500)
+    light((0, -130, 30), 2500)
+    cam = bpy.data.cameras.new("c")
+    cam.type = "ORTHO"
+    camera = bpy.data.objects.new("c", cam)
+    scene.collection.objects.link(camera)
+    scene.camera = camera
+    camera.location = centre + Vector((1.2, 0.9, 0.32)).normalized() * 400
+    camera.rotation_euler = (centre - camera.location).to_track_quat("-Z", "Y").to_euler()
+    scene.render.resolution_x, scene.render.resolution_y = 2000, 1250
+    bpy.context.view_layer.update()
+    inv = camera.matrix_world.inverted()
+    local = [inv @ q for q in pts]
+    xs, ys = [q.x for q in local], [q.y for q in local]
+    # Framed on the parts, with a margin, their middle in the middle.
+    aspect = scene.render.resolution_x / scene.render.resolution_y
+    cam.ortho_scale = max(max(xs) - min(xs), (max(ys) - min(ys)) * aspect) * 1.08
+    camera.location = camera.matrix_world @ Vector(((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, 0))
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 128
+    scene.cycles.use_denoising = True
+    scene.render.film_transparent = True
+    scene.view_settings.view_transform = "Standard"
+    bpy.context.view_layer.update()
+    spots = {}
+    for lname, objs in placed.items():
+        q = [world_to_camera_view(scene, camera, o.matrix_world @ v.co) for o in objs for v in o.data.vertices]
+        mid = sum(q, Vector()) / len(q)
+        top = min(q, key=lambda c: -c.y)
+        bottom = min(q, key=lambda c: c.y)
+        spots[lname] = {"mid": [mid.x, 1 - mid.y], "top": [top.x, 1 - top.y], "bottom": [bottom.x, 1 - bottom.y]}
+    json.dump(spots, open(out.replace(".png", ".json"), "w"))
+    scene.render.filepath = out
+    bpy.ops.render.render(write_still=True)
+    print("EXPLODED", out, flush=True)
+    os._exit(0)
+
 textures = []
 vertices, index = [], {}
 triangles = []  # (a, b, c, material)
@@ -247,7 +406,7 @@ for ob in bpy.data.objects:
         for loop in tri.loops:
             p = mw @ me.vertices[me.loops[loop].vertex_index].co
             n = (nm @ normals[loop].vector).normalized()
-            t = uv(tex, p.x, p.y, p.z)
+            t = uv(tex, p.x, p.y, p.z, ob.name)
             key = (round(p.x, 4), round(p.y, 4), round(p.z, 4), round(n.x, 3), round(n.y, 3), round(n.z, 3),
                    round(t[0], 4), round(t[1], 4), mi)
             if key not in index:

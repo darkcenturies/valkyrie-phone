@@ -85,6 +85,8 @@ constexpr uint16_t kAnimsLoaded = 0x04EE;            // file
 constexpr uint16_t kEnterAsDriver = 0x05CB;          // ped, car, ms
 constexpr uint16_t kEnterAsPassenger = 0x05CA;       // ped, car, ms, seat
 constexpr uint16_t kAddFloatStat = 0x0A1F;           // stat, value (no message)
+constexpr uint16_t kDriveWander = 0x05D2;            // ped, car, speed, driving style
+constexpr uint16_t kKeepTask = 0x0961;               // ped, keep
 
 constexpr int kPlayer = 0;
 constexpr int kPedCop = 6;
@@ -721,7 +723,20 @@ void Track() {
                 }
             }
             if (in || now - u.stageAt > 25000) {
-                if (in) script::Command(kWander, {u.car});
+                if (in) {
+                    // Off at a normal pace. Wandering the car alone left the
+                    // driver's own drive to the caller in charge - and a car
+                    // at the end of its drive only creeps. The driver is
+                    // given the wander as a task of their own instead, kept
+                    // after the phone lets them go.
+                    const float speed = u.kind == Kind::Delivery ? kDeliveryCruise : 25.0f;
+                    script::Command(kCruiseSpeed, {u.car, speed});
+                    script::Command(kWander, {u.car});
+                    if (Alive(u.driver)) {
+                        script::Command(kDriveWander, {u.driver, u.car, speed, kDriveAvoidCars});
+                        script::Command(kKeepTask, {u.driver, true});
+                    }
+                }
                 Release(u, in ? "left the scene" : "was released at the scene");
                 done = true;
             }

@@ -78,13 +78,17 @@ struct Config {
     struct Features {
         bool rain = true, cracks = true, startup = true, outline = true, motion = true, vibrate = true,
              menuCursor = true, arrange = true, glass = true, subtitles = false, scratches = true,
-             maps = true;  // the Maps app, and the map it draws from Valkyrie-radar-tiles
+             maps = true,  // the Maps app, and the map it draws from Valkyrie-radar-tiles
+             blood = true,      // blood on the glass after a hit with the phone
+             slowPages = true,  // web pages load at EDGE speed
+             signal = true;     // the signal follows the map's masts
         float rainAmount = 1.0f;     // how hard rain gathers on the glass
         int crackTaps = 10;          // quick taps in one spot that break the glass
         float crackSeconds = 60.0f;  // how long a crack lasts
         float startupSeconds = 14.0f;
         float scratchAmount = 1.0f;  // how worn the glass is
         bool scratchStrong = true;   // [Features] ScratchLook: Strong or Subtle
+        float bloodSeconds = 60.0f;  // how long blood stays on the glass
     } features;
     int calendarYear = 2007;  // [Calendar] the year the phone's calendar starts in
     // [Stocks]: BAWSAQ's companies and its trading hours.

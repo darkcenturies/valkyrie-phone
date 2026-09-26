@@ -16,6 +16,9 @@ Hill.
 - **Food delivery.** Well Stacked Pizza, Burger Shot and Cluckin' Bell
   deliver to where you are, at the shops' own prices.
 - **Text messages**, with text tones.
+- **Signal from the map's radio masts.** Bars drop indoors and far from a
+  mast, some valleys have no service, and calls, texts and web pages follow
+  the signal. `tools/signal-coverage` works it out.
 - **Camera and Photos.** A live viewfinder, selfies, and a camera roll saved
   to your pictures folder.
 - **Maps.** A 3D map of the world you can drag, zoom and tilt, with CJ and the
@@ -38,7 +41,9 @@ start.
 ## Installing
 
 Download a release from <https://files.sp-rp.com/> (you need to be a member of
-the SP-RP Discord). Each archive has a README saying what goes where.
+the SP-RP Discord). There are three: with Project Eagle's map, with GTA: San
+Andreas' map, or with a script that builds the map from your own game
+(`build-phone-map.ps1`). Each archive has a README saying what goes where.
 
 The Maps app needs the map tiles for your world: the Project Eagle set or the
 original GTA: San Andreas set. The tiles are rendered from the games' own

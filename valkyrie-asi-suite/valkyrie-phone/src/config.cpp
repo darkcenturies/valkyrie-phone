@@ -50,9 +50,11 @@ const Section kSections[] = {
      "; 1: the phone on screen is its 3D model, coming in from the corner with the\r\n"
      "; Valkyrie ink round it. 0: the flat handset rising from the bottom.\r\n"
      "Model3D=1\r\n"
-     "; The picture in the HUD's weapon slot while the phone is out: one of the\r\n"
-     "; phone's own (weapon_phone_eagle in Project Eagle's star-badge style,\r\n"
-     "; weapon_phone, app_phone), or Auto for Project Eagle's style under Eagle.\r\n"
+     "; The picture in the HUD's weapon slot while the phone is out: Auto (Project\r\n"
+     "; Eagle's star-badge style under Eagle, the plain one elsewhere), Detailed\r\n"
+     "; (the badge style with the phone's screen drawn in), or one of the phone's\r\n"
+     "; own pictures: weapon_phone_eagle, weapon_phone_eagle_detailed,\r\n"
+     "; weapon_phone, app_phone.\r\n"
      "WeaponIcon=Auto\r\n"
      "; How strongly its display shows its pixels' red, green and blue stripes, from\r\n"
      "; 0 (none) to 1.\r\n"
@@ -114,6 +116,16 @@ const Section kSections[] = {
      "ScratchAmount=1.0\r\n"
      "; Strong: plain to see in the sun. Subtle: fewer and fainter, only just there.\r\n"
      "ScratchLook=Strong\r\n"
+     "; Blood on the glass after hitting someone with the phone, and how many\r\n"
+     "; seconds it stays (fading over the last quarter).\r\n"
+     "Blood=1\r\n"
+     "BloodSeconds=60\r\n"
+     "; Web pages load as slowly as 2007's EDGE network did. 0: at once.\r\n"
+     "SlowPages=1\r\n"
+     "; The signal comes from the radio masts on the map: fewer bars indoors and\r\n"
+     "; far out, no service in the dead spots, and calls and web pages go with\r\n"
+     "; it. 0: full signal everywhere.\r\n"
+     "Signal=1\r\n"
      "; The game's subtitles for what is said on a call (it is on the phone too).\r\n"
      "Subtitles=0\r\n"
      "; The Maps app: San Andreas in 3D, drawn from the Valkyrie-radar-tiles folder\r\n"
@@ -393,6 +405,11 @@ void WriteDefaults(const std::string& ini) {
         }
         if (!GetPrivateProfileStringA("Features", "ScratchLook", "", v, sizeof v, ini.c_str()))
             WritePrivateProfileStringA("Features", "ScratchLook", "Strong", ini.c_str());
+        for (const auto& [key, value] : {std::pair<const char*, const char*>{"Blood", "1"}, {"BloodSeconds", "60"},
+                                         {"SlowPages", "1"}, {"Signal", "1"}}) {
+            if (!GetPrivateProfileStringA("Features", key, "", v, sizeof v, ini.c_str()))
+                WritePrivateProfileStringA("Features", key, value, ini.c_str());
+        }
     }
     if (add.empty()) return;
     std::ofstream out(ini, std::ios::binary | std::ios::app);
@@ -464,6 +481,8 @@ void Load(const std::string& gameDir) {
     if (_stricmp(c.weaponIcon.c_str(), "Auto") == 0 || c.weaponIcon == "weapon_phone") {
         const bool eagle = GetFileAttributesA((gameDir + "PECore.asi").c_str()) != INVALID_FILE_ATTRIBUTES;
         c.weaponIcon = eagle ? "weapon_phone_eagle" : "weapon_phone";
+    } else if (_stricmp(c.weaponIcon.c_str(), "Detailed") == 0) {
+        c.weaponIcon = "weapon_phone_eagle_detailed";
     }
     c.modelTextures = Read(ini, "Phone", "ModelTextures", c.modelTextures.c_str());
     c.reflections = atoi(Read(ini, "Model", "Reflections", "1").c_str()) != 0;
@@ -513,6 +532,10 @@ void Load(const std::string& gameDir) {
     f.subtitles = flag("Subtitles", false);
     f.maps = flag("Maps", true);
     f.scratches = flag("Scratches", true);
+    f.blood = flag("Blood", true);
+    f.slowPages = flag("SlowPages", true);
+    f.signal = flag("Signal", true);
+    f.bloodSeconds = std::clamp(static_cast<float>(atof(Read(ini, "Features", "BloodSeconds", "60").c_str())), 5.0f, 3600.0f);
     f.scratchStrong = _stricmp(Read(ini, "Features", "ScratchLook", "Strong").c_str(), "Subtle") != 0;
     f.scratchAmount = std::clamp(static_cast<float>(atof(Read(ini, "Features", "ScratchAmount", "1.0").c_str())), 0.0f, 3.0f);
     f.rainAmount = std::clamp(static_cast<float>(atof(Read(ini, "Features", "RainAmount", "1.0").c_str())), 0.0f, 4.0f);
