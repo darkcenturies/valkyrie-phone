@@ -88,6 +88,11 @@ game's `models` folder at run time.
 - `valkyrie-trainer`: the trainer the phone carries, built on plugin-sdk and
   Dear ImGui (submodules).
 
+## Contributing
+
+Pull requests are welcome; each one is reviewed by the maintainer before it
+is merged. See `CONTRIBUTING.md`.
+
 ## Licence
 
 The code here is under the BSD 3-Clause licence (`LICENSE`). Third-party
