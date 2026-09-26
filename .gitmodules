@@ -1,0 +1,6 @@
+[submodule "valkyrie-trainer/third_party/plugin-sdk"]
+	path = valkyrie-trainer/third_party/plugin-sdk
+	url = https://github.com/dk22pac/plugin-sdk.git
+[submodule "valkyrie-trainer/third_party/imgui"]
+	path = valkyrie-trainer/third_party/imgui
+	url = https://github.com/ocornut/imgui.git

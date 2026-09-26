@@ -1,0 +1,19 @@
+Valkyrie Trainer by valkyrie
+Support: https://ko-fi.com/valkyriesamp
+
+Built with Valkyrie Core. Preview work shares techniques with the Valkyrie
+Inventory / Atmosphere tools. Thanks to the testers reporting failures.
+
+Rockstar Games: GTA San Andreas and original game artwork.
+Dear ImGui: Omar Cornut and contributors.
+plugin-sdk: Dmitry K., fastman92, LINK/2012 and contributors.
+SafetyHook, Zydis and Zycore: their respective authors and contributors.
+Pricedown: Ray Larabie (font metadata credits 1998-2009).
+Project names, logos and artwork remain credited to their respective creators.
+Bundled code license notices are in licenses/.
+
+Elsewhere
+SP-RP: https://sp-rp.com/
+Project Eagle: https://www.projecteaglemod.games/
+Stars & Stripes Multiplayer
+Project Silent Hill: https://discord.gg/WRthyZNdWS

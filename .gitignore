@@ -1,0 +1,13 @@
+# Build output
+valkyrie-asi-suite/build/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.res
+__pycache__/
+# Written by build.ps1 on every build
+valkyrie-asi-suite/valkyrie-core/src/version.h
+# The browser's page pack is built on your own machine (see README.md)
+valkyrie-asi-suite/valkyrie-phone/assets/web/

@@ -1,0 +1,9 @@
+#include <windows.h>
+103 RCDATA "bundle/valkyrie-trainer-assets/valkyrie.png"
+104 RCDATA "bundle/valkyrie-trainer-assets/sprp.png"
+108 RCDATA "bundle/CREDITS.txt"
+109 RCDATA "bundle/licenses/Dear-ImGui.txt"
+110 RCDATA "bundle/licenses/Hooking.txt"
+111 RCDATA "bundle/licenses/plugin-sdk.txt"
+112 RCDATA "bundle/licenses/SafetyHook.txt"
+113 RCDATA "bundle/licenses/Zydis-Zycore.txt"
