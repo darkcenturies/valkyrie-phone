@@ -10,6 +10,7 @@
 #include <string>
 
 #include "game.h"
+#include "game_startup.h"
 #include "log.h"
 #include "config.h"
 #include "phone.h"
@@ -25,7 +26,6 @@ namespace {
 // copy is not started.
 DWORD WINAPI StartRadar(LPVOID) {
     // Every ASI is loaded by now.
-    Sleep(2000);
     if (!config::Get().features.maps) {
         logfile::Line("maps: the Maps app is off ([Features] Maps=0) - no map drawn");
         return 0;
@@ -57,14 +57,12 @@ DWORD WINAPI Start(LPVOID) {
         return 0;
     }
 
-    // The Maps app's map, on a thread of its own (it waits for the game's
-    // graphics).
-    if (HANDLE radar = CreateThread(nullptr, 0, &StartRadar, nullptr, 0, nullptr)) CloseHandle(radar);
-
     char path[MAX_PATH]{};
     GetModuleFileNameA(nullptr, path, MAX_PATH);
     if (char* slash = strrchr(path, '\\')) slash[1] = 0;
     phone::Configure(path);
+    // RenderWare is initialized and configuration is loaded before map setup.
+    StartRadar(nullptr);
 
     // Logic in the frame hook, the handset where the HUD is painted - the
     // same split fuel uses, for the same reason. The camera also needs a
@@ -89,9 +87,7 @@ extern "C" BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(self);
         InitializeCriticalSection(&radar3d::g_routeLock);
-        if (HANDLE thread = CreateThread(nullptr, 0, &Start, nullptr, 0, nullptr)) {
-            CloseHandle(thread);
-        }
+        if (game::Init()) game_startup::Register(&Start);
     }
     return TRUE;
 }

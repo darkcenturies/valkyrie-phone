@@ -102,6 +102,10 @@ foreach ($e in $editions) {
 
     # The ini as the phone writes it.
     python (Join-Path $root "tools\phone-default-ini.py") (Join-Path $dir "valkyrie-phone.ini") | Out-Null
+    if ($e.Id -eq "project-silent-hill") {
+        python (Join-Path $root "tools\configure-silent-hill-phone.py") (Join-Path $dir "valkyrie-phone.ini") --no-backup
+        if ($LASTEXITCODE -ne 0) { throw "Silent Hill phone configuration failed" }
+    }
     Write-Readme (Join-Path $dir "README.txt") $e
     if ($e.Id -eq "script") {
         Copy-Item -LiteralPath (Join-Path $root "tools\build-phone-map.ps1") -Destination $dir

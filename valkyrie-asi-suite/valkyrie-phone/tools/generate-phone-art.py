@@ -31,11 +31,11 @@ ASSETS = os.path.join(HERE, "..", "assets")
 OUT = os.path.join(ASSETS, "generated")
 SS = 4  # supersampling factor
 
-# Empty the folder rather than remove it, which fails while anything has it
-# open.
+# Regenerate the base artwork without deleting independently generated skins.
 os.makedirs(OUT, exist_ok=True)
 for old in os.listdir(OUT):
-    os.remove(os.path.join(OUT, old))
+    if not old.startswith("sm_"):
+        os.remove(os.path.join(OUT, old))
 
 BLACK = (0, 0, 0, 255)
 

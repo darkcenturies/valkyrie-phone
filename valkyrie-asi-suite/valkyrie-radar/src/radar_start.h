@@ -14,7 +14,7 @@ bool Running();
 
 // What the phone carries: the map its Maps app draws, from the same tiles,
 // and none of the radar - the HUD's radar is left to the game, or to
-// valkyrie-radar.asi. Run on a thread of its own, once.
+// valkyrie-radar.asi. Call once on the game thread after RenderWare initialization.
 void RunMapsOnly();
 
 }  // namespace radar3d

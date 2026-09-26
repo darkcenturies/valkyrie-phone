@@ -401,6 +401,18 @@ bool LeftHandPlace(uintptr_t ped, const float turn[3], const float offset[3], bo
     return true;
 }
 
+bool LeftHandLamp(uintptr_t ped, const float turn[3], const float offset[3], bool flip, float pos[3], float direction[3]) {
+    Matrix m{};
+    if (!HandMatrix(ped, turn, offset, flip, m)) return false;
+    // build-phone-model.py: MIDDLE + camera centre in metres; back faces -Y.
+    constexpr float lens[3] = {0.054f, 0.01545f, 0.064f};
+    for (int i = 0; i < 3; ++i) {
+        pos[i] = m.pos[i] + m.right[i] * lens[0] + m.up[i] * lens[1] + m.at[i] * lens[2];
+        direction[i] = -m.up[i];
+    }
+    return true;
+}
+
 void ReleaseHand() {
     g_draw.on = false;
     if (g_hand) reinterpret_cast<int(__cdecl*)(uintptr_t)>(kRpClumpDestroy)(g_hand);

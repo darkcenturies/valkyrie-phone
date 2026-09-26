@@ -50,6 +50,10 @@ const Section kSections[] = {
      "; 1: the phone on screen is its 3D model, coming in from the corner with the\r\n"
      "; Valkyrie ink round it. 0: the flat handset rising from the bottom.\r\n"
      "Model3D=1\r\n"
+     "; How it looks: iFruit, or ShatteredMemories - Harry's phone from Silent Hill:\r\n"
+     "; Shattered Memories, black with three keys ringed in teal under a menu of\r\n"
+     "; tiles. [Look]'s colours left as they ship take the skin's own.\r\n"
+     "Skin=iFruit\r\n"
      "; The picture in the HUD's weapon slot while the phone is out: Auto (Project\r\n"
      "; Eagle's star-badge style under Eagle, the plain one elsewhere), Detailed\r\n"
      "; (the badge style with the phone's screen drawn in), or one of the phone's\r\n"
@@ -397,6 +401,11 @@ void WriteDefaults(const std::string& ini) {
         if (!exists || !HasSection(ini, s.name)) add += s.text;
     }
     // Keys added to a section after it first shipped.
+    if (exists && HasSection(ini, "Phone")) {
+        char v[32] = {};
+        if (!GetPrivateProfileStringA("Phone", "Skin", "", v, sizeof v, ini.c_str()))
+            WritePrivateProfileStringA("Phone", "Skin", "iFruit", ini.c_str());
+    }
     if (exists && HasSection(ini, "Features")) {
         char v[16] = {};
         if (!GetPrivateProfileStringA("Features", "Scratches", "", v, sizeof v, ini.c_str())) {
@@ -496,24 +505,45 @@ void Load(const std::string& gameDir) {
     three("HandOffset", "0.04,0.05,0", c.handOffset);
     c.handFlip = atoi(Read(ini, "Model", "HandFlip", "1").c_str()) != 0;
     c.model3d = atoi(Read(ini, "Phone", "Model3D", "1").c_str()) != 0;
-    // [Look]
-    auto colour = [&](const char* key, uint32_t& out) {
+    {
+        const std::string skin = Read(ini, "Phone", "Skin", "iFruit");
+        c.shattered = _stricmp(skin.c_str(), "ShatteredMemories") == 0 || _stricmp(skin.c_str(), "Shattered") == 0;
+        c.silentHill = _stricmp(Read(ini, "Phone", "Profile", "Default").c_str(), "SilentHill") == 0;
+        if (c.silentHill) c.shattered = true;
+    }
+    // [Look]. Under the Shattered Memories skin, its own colours stand in for
+    // any the file leaves as they ship.
+    const Config::Look ifruit{};
+    if (c.shattered) {
+        auto& l = c.look;
+        l.accent = 0xFF56D6EC;
+        l.accentBar = 0x6038A8C8;
+        l.dimGrey = 0xFF7C8C94;
+        l.panel = 0xB4000000;
+        l.panelDark = 0xE6000000;
+        l.separator = 0x3856D6EC;
+        l.band = 0xFF071018;
+        l.bandTop = 0xFF0E2330;
+    }
+    auto colour = [&](const char* key, uint32_t& out, uint32_t shipped) {
         const std::string v = Read(ini, "Look", key, "");
-        if (!v.empty()) out = static_cast<uint32_t>(strtoul(v.c_str(), nullptr, 16));
+        if (v.empty()) return;
+        const uint32_t value = static_cast<uint32_t>(strtoul(v.c_str(), nullptr, 16));
+        if (!c.shattered || value != shipped) out = value;
     };
-    colour("Accent", c.look.accent);
-    colour("AccentBar", c.look.accentBar);
-    colour("Text", c.look.text);
-    colour("Grey", c.look.grey);
-    colour("DimGrey", c.look.dimGrey);
-    colour("Panel", c.look.panel);
-    colour("PanelDark", c.look.panelDark);
-    colour("Separator", c.look.separator);
-    colour("Band", c.look.band);
-    colour("BandTop", c.look.bandTop);
-    colour("Green", c.look.green);
-    colour("Red", c.look.red);
-    colour("Ink", c.look.ink);
+    colour("Accent", c.look.accent, ifruit.accent);
+    colour("AccentBar", c.look.accentBar, ifruit.accentBar);
+    colour("Text", c.look.text, ifruit.text);
+    colour("Grey", c.look.grey, ifruit.grey);
+    colour("DimGrey", c.look.dimGrey, ifruit.dimGrey);
+    colour("Panel", c.look.panel, ifruit.panel);
+    colour("PanelDark", c.look.panelDark, ifruit.panelDark);
+    colour("Separator", c.look.separator, ifruit.separator);
+    colour("Band", c.look.band, ifruit.band);
+    colour("BandTop", c.look.bandTop, ifruit.bandTop);
+    colour("Green", c.look.green, ifruit.green);
+    colour("Red", c.look.red, ifruit.red);
+    colour("Ink", c.look.ink, ifruit.ink);
     c.look.inkWidth = std::clamp(static_cast<float>(atof(Read(ini, "Look", "InkWidth", "1.0").c_str())), 0.0f, 4.0f);
     // [Features]
     auto flag = [&](const char* key, bool fallback) {
@@ -656,7 +686,7 @@ void Load(const std::string& gameDir) {
         {"Michelle", "hud:radar_girlfriend"},  {"Helena", "hud:radar_girlfriend"},
         {"Katie", "hud:radar_girlfriend"},     {"Barbara", "hud:radar_girlfriend"},
         {"Millie", "hud:radar_girlfriend"}};
-    for (const auto& kv : Pairs(ini, "Contacts")) {
+    for (const auto& kv : Pairs(ini, c.silentHill ? "SilentHillContacts" : "Contacts")) {
         const size_t comma = kv.second.find(',');
         std::string digits;
         for (char ch : kv.second.substr(0, comma)) {
@@ -694,7 +724,7 @@ void Load(const std::string& gameDir) {
     c.trainer = Read(ini, "Services", "Trainer", "*#87246#");
     // The trainer in the contacts, at whatever number [Services] gives it, so
     // nobody has to know the code. Deleted on the phone like any other.
-    if (!c.trainer.empty()) {
+    if (!c.silentHill && !c.trainer.empty()) {
         bool listed = false;
         for (const auto& contact : c.contacts) listed = listed || contact.number == c.trainer;
         if (!listed) c.contacts.push_back({"Trainer", c.trainer, ""});
@@ -708,7 +738,7 @@ void Load(const std::string& gameDir) {
     const char* const restaurantIcons[] = {"hud:radar_pizza", "hud:radar_burgerShot", "hud:radar_chicken"};
     for (int i = 0; i < 3; ++i) {
         const std::string& number = *restaurants[i].second;
-        if (number.empty()) continue;
+        if (c.silentHill || number.empty()) continue;
         bool listed = false;
         for (const auto& contact : c.contacts) listed = listed || contact.number == number;
         if (!listed) c.contacts.push_back({restaurants[i].first, number, restaurantIcons[i]});
@@ -745,6 +775,11 @@ void Load(const std::string& gameDir) {
     c.homePage = Read(ini, "Internet", "Home", "www.eyefind.info");
 
     g_config = c;
+    if (c.silentHill) {
+        c.save.clear(); c.trainer.clear(); c.emergency.clear(); c.nonEmergency.clear();
+        c.hotline.clear(); c.hotel.clear(); c.pizza.clear(); c.burger.clear(); c.chicken.clear();
+    }
+    logfile::Line("config: profile %s", c.silentHill ? "SilentHill" : "Default");
     logfile::Line("config: key %d, %zu apps, %zu contacts, %zu ringtones", c.key, c.apps.size(), c.contacts.size(),
                   c.ringtones.size());
 }

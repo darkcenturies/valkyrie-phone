@@ -177,8 +177,7 @@ void Run() {
 bool Running() { return g_running; }
 
 void RunMapsOnly() {
-    // The game's graphics device first, as Run waits for it.
-    Sleep(5000);
+    // Called by the phone after RenderWare initialization, on the game thread.
     if (!game::Init()) {
         logfile::Line("maps: unsupported executable - no map");
         return;

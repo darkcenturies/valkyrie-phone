@@ -1,5 +1,7 @@
 # Valkyrie Phone
 
+For shared-source updates and related repositories, see [maintenance](MAINTENANCE.md).
+
 A working phone for GTA: San Andreas single player, built as one ASI plugin.
 CJ carries a 2007-style iFruit: he takes it out, holds it, and uses it in the
 world while the game goes on around him.

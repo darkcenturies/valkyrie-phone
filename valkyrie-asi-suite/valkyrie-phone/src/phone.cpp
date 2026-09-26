@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <array>
 #include <functional>
@@ -27,6 +28,7 @@
 #include "input.h"
 #include "log.h"
 #include "phone_art.h"
+#include "phone_art_sm.h"
 #include "phone_data.h"
 #include "phone3d.h"
 #include "phone_model.h"
@@ -322,6 +324,9 @@ struct State {
     bool arranging = false;
     std::string dragging;       // the app being carried, by id
     std::string iconHeld;       // the app held down, toward arranging
+    // The Shattered Memories menu: the page it is on, and the app lit on it.
+    int menuPage = 0;
+    std::string menuSel;
     ULONGLONG iconHeldSince = 0;
     ULONGLONG radioAt = 0;      // when the phone started it
     int calYear = 0, calMonth = 1, calDay = 1;  // the month shown and the day picked
@@ -558,6 +563,9 @@ void StartCamera(bool selfie);
 void PlayAlert(const std::string& tone, ULONGLONG buzz = 0);
 void TogglePower();
 void Wake();
+void Sleep();
+void KeyA();
+void KeyMinus();
 void ChangeVolume(int by);
 void ToggleSilent();
 void Open();
@@ -667,6 +675,59 @@ Font Pricedown(float size, uint32_t argb = kWhite, sprite::Align align = sprite:
     return f;
 }
 
+// ---------------------------------------------------------------------------
+// The Shattered Memories skin ([Phone] Skin=ShatteredMemories)
+//
+// Harry's phone: a black handset, and under its screen three round keys ringed
+// in lit teal - A, the pad, and minus. The display is black with a cold blue
+// haze; the menu is teal tiles three by three with the one lit named above
+// them in capitals; the signal and the battery are in lime; titles are set in
+// capitals; buttons are dark with teal edges.
+// ---------------------------------------------------------------------------
+
+constexpr uint32_t kSmTeal = 0xFF56D6EC;
+constexpr uint32_t kSmLime = 0xFFBAD646;  // the signal and the battery
+
+bool Shattered() { return config::Get().shattered; }
+bool SilentHill() { return config::Get().silentHill; }
+
+std::string Upper(std::string s) {
+    for (char& c : s) c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
+// The skin's lettering: the menu's upright capitals.
+Font Caps(float size, uint32_t argb = kWhite, sprite::Align align = sprite::Align::Centre) {
+    Font f = F(size, argb, align, 0);
+    f.face = sprite::Face::Menu;
+    return f;
+}
+
+// An arrowhead: its point at (x, y), pointing left or right.
+void Chevron(float x, float y, bool left, float size, float width, uint32_t argb) {
+    const float a = left ? 0.785f : -0.785f;
+    ui::Needle(x, y, a, size, width * 0.5f, width, argb);
+    ui::Needle(x, y, 3.14159265f - a, size, width * 0.5f, width, argb);
+}
+
+// The edge a button of this colour gets: its own colour lit up, or teal for
+// a grey one.
+uint32_t SmEdge(uint32_t fill) {
+    const int r = (fill >> 16) & 255, gg = (fill >> 8) & 255, b = fill & 255;
+    if (std::max({r, gg, b}) - std::min({r, gg, b}) < 30) return kSmTeal;
+    auto up = [](int c) { return static_cast<uint32_t>(c + (255 - c) * 0.35f); };
+    return 0xFF000000 | (up(r) << 16) | (up(gg) << 8) | up(b);
+}
+
+// The handset's textures: the skin's own in place of the iFruit's.
+const char* BodyArt(const char* name) {
+    if (!Shattered()) return name;
+    if (strcmp(name, "body") == 0) return "sm_body";
+    if (strcmp(name, "phone_normal") == 0) return "sm_phone_normal";
+    if (strcmp(name, "phone_material") == 0) return "sm_phone_material";
+    return name;
+}
+
 // The first iPhone's bars: a 20 point status bar, 44 point navigation bars
 // and toolbars, a 49 point tab bar.
 constexpr float kStatusH = 20.0f;
@@ -675,12 +736,21 @@ constexpr float kTabH = 49.0f;
 constexpr float kContentTop = kStatusH + kHeaderH;
 
 void Wallpaper(uint32_t argb = kWhite) {
+    if (Shattered()) {
+        // The display's own haze, whatever wallpaper is chosen.
+        ui::Image("sm_back", 0, 0, ui::kScreenW, ui::kScreenH, argb);
+        return;
+    }
     ui::Image(("wall_" + std::to_string(phone_data::Get().settings.wallpaper)).c_str(), 0, 0,
               ui::kScreenW, ui::kScreenH, argb);
 }
 
 // The wallpaper, dark enough to read over - what every app sits on.
 void Backdrop() {
+    if (Shattered()) {
+        ui::Image("sm_back", 0, 0, ui::kScreenW, ui::kScreenH, 0xFFB0B0B0);
+        return;
+    }
     Wallpaper(0xFF6E6E6E);
     ui::Fill(0, 0, ui::kScreenW, ui::kScreenH, 0x96000000);
 }
@@ -691,9 +761,74 @@ bool PlayerPlace(float& x, float& y, float& z, float& heading);
 // country between them, a bar less indoors and high up. Worked out a few
 // times a second.
 // The bars, from the masts on the map (coverage.cpp).
-int SignalBars() { return coverage::Bars(); }
+int SignalBars() { return SilentHill() ? 0 : coverage::Bars(); }
+
+// The computer's battery, as the phone's (full on one without): polled
+// every few seconds.
+void BatteryLevel(int& percent, bool& charging) {
+    static int level = 100;
+    static bool plugged = false;
+    static ULONGLONG polled = 0;
+    if (!polled || GetTickCount64() - polled > 5000) {
+        polled = GetTickCount64();
+        SYSTEM_POWER_STATUS ps{};
+        if (GetSystemPowerStatus(&ps) && ps.BatteryLifePercent <= 100 && !(ps.BatteryFlag & 128)) {
+            level = ps.BatteryLifePercent;
+            plugged = ps.ACLineStatus == 1 && level < 100;
+        } else {
+            level = 100;
+            plugged = false;
+        }
+    }
+    percent = level;
+    charging = plugged;
+}
+
+// The Shattered Memories phone's: lime bars rising at the left, the battery
+// in a white case at the right, over the display rather than a band.
+void ShatteredStatusBar() {
+    ui::Gradient(0, 0, ui::kScreenW, kStatusH + 8.0f, 0xC0000000, 0x00000000);
+    const int bars = SignalBars();
+    if (bars == 0) {
+        ui::Label(6.0f, 3.0f, "No Service", F(12.0f, kSmLime, sprite::Align::Left, 0));
+    } else {
+        for (int i = 0; i < 5; ++i) {
+            const float h = 4.0f + i * 2.6f;
+            ui::Fill(6.0f + i * 5.0f, 16.5f - h, 3.5f, h, i < bars ? kSmLime : 0x48BAD646);
+        }
+        if (g.screen == Screen::Internet || g.screen == Screen::Sites || g.screen == Screen::Maps)
+            ui::Label(33.0f, 3.5f, "E", F(12.0f, kSmLime, sprite::Align::Left, 0));
+    }
+    if (g.screen != Screen::Lock && g.screen != Screen::Off) {
+        ui::Label(ui::kScreenW / 2, 3.0f, phone_data::FormatTime(phone_data::Now()),
+                  F(13.0f, 0xFFE4ECEE, sprite::Align::Centre, 0));
+    }
+    if (AlarmOn()) ui::Image("g_alarm", ui::kScreenW - 58.0f, 2.0f, 16.0f, 16.0f, 0xFFE4ECEE);
+    if (phone_data::Get().settings.silent) {
+        const float sx = ui::kScreenW - (AlarmOn() ? 78.0f : 58.0f);
+        ui::Image("g_alarm", sx, 2.0f, 16.0f, 16.0f, 0xFFB0B0B0);
+        ui::Needle(sx + 8.0f, 10.0f, 0.785f, 9.0f, 9.0f, 2.0f, 0xFFE03030);
+    }
+    int percent;
+    bool charging;
+    BatteryLevel(percent, charging);
+    const float bx = ui::kScreenW - 36.0f, by = 5.0f, bw = 24.0f, bh = 11.0f;
+    ui::Frame(bx, by, bw, bh, 1.6f, 0xFFE8E8E8);
+    ui::Fill(bx + bw, by + 3.0f, 2.5f, bh - 6.0f, 0xFFE8E8E8);
+    const bool low = percent <= 20 && !charging;
+    ui::Fill(bx + 3.0f, by + 3.0f, (bw - 6.0f) * std::clamp(percent / 100.0f, 0.08f, 1.0f), bh - 6.0f,
+             low ? kWastedRed : kSmLime);
+    if (charging) {
+        ui::Needle(bx + bw / 2 + 1.5f, by + bh / 2, 0.45f, 5.0f, 1.0f, 2.0f, kWhite);
+        ui::Needle(bx + bw / 2 - 1.5f, by + bh / 2, 3.59f, 5.0f, 1.0f, 2.0f, kWhite);
+    }
+}
 
 void StatusBar() {
+    if (Shattered()) {
+        ShatteredStatusBar();
+        return;
+    }
     ui::Fill(0, 0, ui::kScreenW, kStatusH, kPanelDark);
     // Signal: five rising bars with black edges, lit up to the signal there
     // is, then the carrier - and the EDGE "E" while an app is on the network.
@@ -737,20 +872,9 @@ void StatusBar() {
     // filled in the HUD's money green as far as the battery of the computer
     // the game runs on is charged (full on one without), red when low, and
     // a bolt through it while it charges.
-    static int percent = 100;
-    static bool charging = false;
-    static ULONGLONG polled = 0;
-    if (GetTickCount64() - polled > 5000) {
-        polled = GetTickCount64();
-        SYSTEM_POWER_STATUS ps{};
-        if (GetSystemPowerStatus(&ps) && ps.BatteryLifePercent <= 100 && !(ps.BatteryFlag & 128)) {
-            percent = ps.BatteryLifePercent;
-            charging = ps.ACLineStatus == 1 && percent < 100;
-        } else {
-            percent = 100;
-            charging = false;
-        }
-    }
+    int percent;
+    bool charging;
+    BatteryLevel(percent, charging);
     const float bx = ui::kScreenW - 38.0f, by = 4.0f, bw = 28.0f, bh = 13.0f;
     ui::Fill(bx, by, bw, bh, kBlack);
     ui::Fill(bx + bw, by + 3.5f, 3.5f, bh - 7.0f, kBlack);
@@ -766,6 +890,7 @@ void StatusBar() {
 }
 
 bool TakeBack() {
+    if (g_drawingFrom) return false;
     const bool pending = g.backPending;
     g.backPending = false;
     return pending;
@@ -782,6 +907,24 @@ bool BarButton(const char* text, bool right, bool back) {
     const float x = right ? ui::kScreenW - w - 6.0f : 6.0f;
     const Rect r{x - 4.0f, kStatusH, w + 8.0f, kHeaderH};
     const bool hot = ui::Pressing(r);
+    if (Shattered()) {
+        // A dark key with a teal edge, lit teal while pressed; a way back
+        // has an arrowhead before its word.
+        ui::Fill(x, y, w, h, hot ? kSmTeal : 0xB4000000);
+        ui::Frame(x, y, w, h, 1.5f, kSmTeal);
+        const uint32_t ink = hot ? kBlack : kWhite;
+        if (picture) {
+            ui::Image(text, x + (w - 24.0f) / 2, y + 3.0f, 24.0f, 24.0f, ink);
+        } else if (back) {
+            Chevron(x + 8.0f, y + h / 2, true, 7.0f, 2.2f, ink);
+            const Font sf = F(13.0f, ink, sprite::Align::Centre, 0);
+            ui::Label(x + 6.0f + w / 2, y + 8.0f, ui::Fit(text, w - 20.0f, sf), sf);
+        } else {
+            const Font sf = F(13.0f, ink, sprite::Align::Centre, 0);
+            ui::Label(x + w / 2, y + 8.0f, ui::Fit(text, w - 8.0f, sf), sf);
+        }
+        return ui::Tapped(r);
+    }
     const uint32_t fill = hot ? 0xFF1E3A66 : 0xFF2F5E9E;
     if (back) {
         // The point: a column of shrinking bars down the left edge.
@@ -811,16 +954,31 @@ bool BarButton(const char* text, bool right, bool back) {
 // the right, 0 for neither. A left button named Edit, Done or Cancel is an
 // action, not a way back, and is drawn as one.
 int Header(const std::string& title, const char* left = nullptr, const char* right = nullptr) {
-    // The iFruit's band: light blue, a little lighter at the top.
-    ui::Gradient(0, kStatusH, ui::kScreenW, kHeaderH, kBandTop, kBand);
-    ui::Fill(0, kContentTop - 2.0f, ui::kScreenW, 2.0f, kBlack);
+    if (Shattered()) {
+        // No band: the title in capitals over the display, a teal hairline
+        // under it.
+        ui::Gradient(0, kStatusH, ui::kScreenW, kHeaderH, 0xD8000000, 0x90000000);
+        ui::Fill(0, kContentTop - 1.0f, ui::kScreenW, 1.0f, 0x8056D6EC);
+    } else {
+        // The iFruit's band: light blue, a little lighter at the top.
+        ui::Gradient(0, kStatusH, ui::kScreenW, kHeaderH, kBandTop, kBand);
+        ui::Fill(0, kContentTop - 2.0f, ui::kScreenW, 2.0f, kBlack);
+    }
     int result = 0;
     if (left) {
         const bool back = strcmp(left, "Edit") != 0 && strcmp(left, "Done") != 0 && strcmp(left, "Cancel") != 0;
-        if (BarButton(left, false, back) || (back && TakeBack())) result = -1;
+        if (BarButton(left, false, back) || ((back || strcmp(left, "Cancel") == 0) && TakeBack())) result = -1;
     }
-    if (right && BarButton(right, true, false)) result = 1;
+    if (right && (BarButton(right, true, false) || (strcmp(right, "Cancel") == 0 && TakeBack()))) result = 1;
     const float room = (left || right) ? 150.0f : 290.0f;
+    if (Shattered()) {
+        const Font tf = Caps(17.0f);
+        const std::string t = ui::Fit(Upper(title), room, tf);
+        const float tw = ui::TextWidth(t, tf);
+        ui::Image("glow", ui::kScreenW / 2 - tw / 2 - 26.0f, kStatusH + 2.0f, tw + 52.0f, 40.0f, 0x3056D6EC);
+        ui::Label(ui::kScreenW / 2, kStatusH + 13.0f, t, tf);
+        return result;
+    }
     ui::Label(ui::kScreenW / 2, kStatusH + 11.0f, ui::Fit(title, room, F(20.0f)),
               F(20.0f, kWhite, sprite::Align::Centre));
     return result;
@@ -838,6 +996,23 @@ int TabBar(const Tab* tabs, int count, int on) {
     ui::Fill(0, y, ui::kScreenW, 1.5f, kBlack);
     const float w = ui::kScreenW / count;
     int tapped = -1;
+    if (Shattered()) {
+        ui::Fill(0, y, ui::kScreenW, kTabH, 0xF4000000);
+        ui::Fill(0, y, ui::kScreenW, 1.0f, 0x8056D6EC);
+        for (int i = 0; i < count; ++i) {
+            const Rect r{i * w, y, w, kTabH};
+            const bool lit = i == on;
+            if (lit) {
+                ui::Fill(r.x + 4.0f, y + 4.0f, w - 8.0f, kTabH - 8.0f, 0x4056D6EC);
+                ui::Frame(r.x + 4.0f, y + 4.0f, w - 8.0f, kTabH - 8.0f, 1.0f, kSmTeal);
+            }
+            ui::Image(tabs[i].icon, r.x + (w - 26.0f) / 2, y + 5.0f, 26.0f, 26.0f,
+                      lit ? kWhite : (ui::Pressing(r) ? kSmTeal : 0xFF5C8E9C));
+            ui::Label(r.x + w / 2, y + 32.0f, tabs[i].label, F(11.0f, lit ? kWhite : kDimGrey, sprite::Align::Centre, 0));
+            if (ui::Tapped(r) && !lit) tapped = i;
+        }
+        return tapped;
+    }
     for (int i = 0; i < count; ++i) {
         const Rect r{i * w, y, w, kTabH};
         const bool lit = i == on;
@@ -974,6 +1149,15 @@ bool Button(float x, float y, float w, float h, uint32_t fill, const std::string
             float textSize = 18.0f) {
     const Rect r{x, y, w, h};
     const bool hot = ui::Pressing(r);
+    if (Shattered()) {
+        const uint32_t edge = SmEdge(fill);
+        ui::Fill(x, y, w, h, hot ? edge : 0xC8000000);
+        if (!hot) ui::Fill(x, y, w, h, (fill & 0x00FFFFFF) | 0x48000000);
+        ui::Frame(x, y, w, h, 1.5f, edge);
+        ui::Label(x + w / 2, y + (h - textSize) / 2 - 1.0f, text,
+                  F(textSize, hot ? kBlack : kWhite, sprite::Align::Centre, 0));
+        return ui::Tapped(r);
+    }
     ui::Fill(x, y, w, h, hot ? kWhite : fill);
     ui::Frame(x, y, w, h, 2.0f, kBlack);
     ui::Label(x + w / 2, y + (h - textSize) / 2 - 1.0f, text,
@@ -986,8 +1170,15 @@ bool IconButton(float x, float y, float w, float h, uint32_t fill, const char* i
                 bool enabled = true) {
     const Rect r{x, y, w, h};
     const bool hot = enabled && ui::Pressing(r);
-    ui::Fill(x, y, w, h, hot ? kWhite : fill);
-    ui::Frame(x, y, w, h, 2.0f, kBlack);
+    if (Shattered()) {
+        const uint32_t edge = SmEdge(fill);
+        ui::Fill(x, y, w, h, hot ? edge : 0xC8000000);
+        if (!hot) ui::Fill(x, y, w, h, (fill & 0x00FFFFFF) | 0x48000000);
+        ui::Frame(x, y, w, h, 1.5f, enabled ? edge : 0xFF3A4A50);
+    } else {
+        ui::Fill(x, y, w, h, hot ? kWhite : fill);
+        ui::Frame(x, y, w, h, 2.0f, kBlack);
+    }
     const float size = std::min(32.0f, h - 10.0f);
     const uint32_t tint = enabled ? kWhite : 0x70FFFFFF;
     if (text) {
@@ -1030,11 +1221,11 @@ void Stage(CallStage s);
 void StartCall(const std::string& number) {
     if (number.empty() || g.call.active) return;
     if (!phone_data::Get().settings.poweredOn) return;
-    if (number == config::Get().save) {
+    if (!SilentHill() && number == config::Get().save) {
         Go(Screen::SavePrompt);
         return;
     }
-    if (number == config::Get().trainer) {
+    if (!SilentHill() && number == config::Get().trainer) {
         // The trainer, inside the phone, as an app of its own.
         g.dial.clear();
         g.trainerGroup.clear();
@@ -1051,7 +1242,7 @@ void StartCall(const std::string& number) {
     if (recents.size() > phone_data::kMaxRecents) recents.resize(phone_data::kMaxRecents);
     Save();
     logfile::Line("phone: calling %s", number.c_str());
-    if (!coverage::HasService()) {
+    if (SilentHill() || !coverage::HasService()) {
         // Nothing to call out on.
         g.call.lastLine = "No Service";
         Stage(CallStage::Unreachable);
@@ -1360,7 +1551,40 @@ void Shimmer(float cx, float y, const char* text, float size, uint32_t rgb, floa
     sprite::EndScissor();
 }
 
+void Unlock() {
+    g.knob = 0.0f;
+    g.sliding = false;
+    if (LockSounds()) sound::Click(sound::Tone::Unlock);
+    Go(g.resume == Screen::Lock ? Screen::Home : g.resume);
+}
+
+// Locked, the Shattered Memories phone shows the time large and the day,
+// and Unlock as its left soft key (or the A key).
+void ShatteredLock() {
+    Wallpaper();
+    StatusBar();
+    const phone_data::Stamp now = phone_data::Now();
+    char time[8];
+    snprintf(time, sizeof time, "%02d:%02d", now.hour, now.minute);
+    ui::Image("glow", 40.0f, 96.0f, 240.0f, 110.0f, 0x3056D6EC);
+    ui::Label(ui::kScreenW / 2, 118.0f, time, Caps(50.0f));
+    ui::Label(ui::kScreenW / 2, 186.0f, Upper(phone_data::DayName(now.day)), Caps(15.0f, kSmTeal));
+    if (SilentHill()) {
+        ui::Label(ui::kScreenW / 2, 258.0f, "HARRY MASON", Caps(16.0f, 0xFFC5C9BD));
+        ui::Label(ui::kScreenW / 2, 286.0f, "SEARCHING FOR SIGNAL", Caps(11.0f, 0xFF6C8B8E));
+    }
+    const float sy = ui::kScreenH - 34.0f;
+    ui::Gradient(0, sy - 14.0f, ui::kScreenW, 48.0f, 0x00000000, 0xC8000000);
+    const Rect key{0, sy - 8.0f, 130.0f, 42.0f};
+    ui::Label(14.0f, sy, "Unlock", F(17.0f, ui::Pressing(key) ? kSmTeal : kWhite, sprite::Align::Left, 0));
+    if (ui::Tapped(key)) Unlock();
+}
+
 void LockScreen() {
+    if (Shattered()) {
+        ShatteredLock();
+        return;
+    }
     Wallpaper();
     StatusBar();
     // The time as the HUD clock shows it, and the day.
@@ -1389,9 +1613,7 @@ void LockScreen() {
         if (!input::LeftHeld()) {
             g.sliding = false;
             if (g.knob > 0.92f) {
-                g.knob = 0.0f;
-                if (LockSounds()) sound::Click(sound::Tone::Unlock);
-                Go(g.resume == Screen::Lock ? Screen::Home : g.resume);
+                Unlock();
                 return;
             }
         }
@@ -1581,7 +1803,144 @@ void IconOnly(const config::App& app, float cx, float y, float size, float scale
 // bottom holding four, on a glass shelf. Held down, an icon starts the
 // icons jiggling, and then any of them can be carried to another place -
 // in the dock or out of it; the home button puts them down.
+// The Shattered Memories phone's menu: the apps as teal tiles three by
+// three, a page at a time, the one the cursor is on lit and named above them.
+// Its soft keys along the bottom: Select opens the lit one, Off locks the
+// phone. The wheel, or the arrows either side, turn the page.
+std::vector<config::App> MenuApps() {
+    std::vector<config::App> grid, dock;
+    HomeLists(grid, dock);
+    std::vector<config::App> apps = grid;
+    apps.insert(apps.end(), dock.begin(), dock.end());
+    // Harry's phone's order first - phone book, call, pictures; map,
+    // messages, camera; settings - then the rest.
+    static const char* const kOrder[] = {"Contacts", "Phone",    "Photos",   "Maps",  "Text",  "Camera",
+                                         "Settings", "Calendar", "Notes",    "Internet", "Games", "Radio",
+                                         "Weather",  "Stocks",   "Clock",    "Calculator", "Flashlight"};
+    auto rank = [](const std::string& id) {
+        for (size_t i = 0; i < sizeof kOrder / sizeof kOrder[0]; ++i) {
+            if (id == kOrder[i]) return static_cast<int>(i);
+        }
+        return 100;
+    };
+    std::stable_sort(apps.begin(), apps.end(),
+                     [&](const config::App& a, const config::App& b) { return rank(a.id) < rank(b.id); });
+    return apps;
+}
+
+void ShatteredMenu() {
+    Wallpaper();
+    StatusBar();
+    const std::vector<config::App> apps = MenuApps();
+    constexpr size_t kPerPage = 9;
+    const int pages = std::max(1, static_cast<int>((apps.size() + kPerPage - 1) / kPerPage));
+    const float W = ui::kScreenW;
+    const float tile = 84.0f, gap = 8.0f, gridW = tile * 3 + gap * 2;
+    const float x0 = (W - gridW) / 2, y0 = 90.0f;
+    if (!g_drawingFrom && g.focused) {
+        const int wheel = input::Wheel();
+        if (wheel < 0) ++g.menuPage;
+        if (wheel > 0) --g.menuPage;
+    }
+    g.menuPage = std::clamp(g.menuPage, 0, pages - 1);
+    const size_t first = static_cast<size_t>(g.menuPage) * kPerPage;
+    const size_t last = std::min(apps.size(), first + kPerPage);
+    // The lit one: the tile under the cursor, else the one lit before if it
+    // is on this page, else the page's first.
+    bool litHere = false;
+    for (size_t i = first; i < last; ++i) {
+        const float tx = x0 + ((i - first) % 3) * (tile + gap), ty = y0 + ((i - first) / 3) * (tile + gap);
+        if (!g_drawingFrom && g.focused && Rect{tx, ty, tile, tile}.Contains(ui::CursorX(), ui::CursorY()))
+            g.menuSel = apps[i].id;
+        litHere = litHere || apps[i].id == g.menuSel;
+    }
+    if (!litHere && first < last) g.menuSel = apps[first].id;
+    // Unlocked, the tiles come up out of the dark.
+    const float fly = g.homeFlyAt ? 1.0f - Ease(Progress(g.homeFlyAt, 420.0f)) : 0.0f;
+    auto faded = [&](uint32_t argb) {
+        const uint32_t a = static_cast<uint32_t>(((argb >> 24) & 255) * (1.0f - fly));
+        return (a << 24) | (argb & 0xFFFFFF);
+    };
+
+    const config::App* lit = nullptr;
+    for (size_t i = first; i < last; ++i) {
+        const config::App& app = apps[i];
+        const Rect r{x0 + ((i - first) % 3) * (tile + gap), y0 + ((i - first) / 3) * (tile + gap), tile, tile};
+        const bool on = app.id == g.menuSel;
+        if (on) lit = &app;
+        const bool pressed = ui::Pressing(r);
+        if (on) ui::Image("glow", r.x - 24.0f, r.y - 24.0f, tile + 48.0f, tile + 48.0f, faded(0x8056D6EC));
+        ui::Image(on ? "sm_tile_on" : "sm_tile", r.x, r.y, tile, tile, faded(pressed ? 0xFFB8B8B8 : 0xFFFFFFFF));
+        std::string glyph = "sm_" + app.id;
+        for (char& c : glyph) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        const float in = 15.0f;
+        if (ui::Tex(glyph.c_str())) {
+            ui::Image(glyph.c_str(), r.x + in, r.y + in, tile - in * 2, tile - in * 2,
+                      faded(on ? 0xFFFFFFFF : 0xE80C2838));
+        } else {
+            Icon(app.icon, r.x + in, r.y + in, tile - in * 2, faded(0xFFFFFFFF));
+        }
+        if (const int n = Badge(app.id)) {
+            const std::string count = std::to_string(n);
+            const float bw = std::max(20.0f, ui::TextWidth(count, F(12.0f)) + 10.0f);
+            ui::Fill(r.x + tile - bw + 5.0f, r.y - 5.0f, bw, 20.0f, faded(0xFF000000));
+            ui::Fill(r.x + tile - bw + 7.0f, r.y - 3.0f, bw - 4.0f, 16.0f, faded(kWastedRed));
+            ui::Label(r.x + tile - bw / 2 + 5.0f, r.y - 2.0f, count, F(12.0f, kWhite, sprite::Align::Centre));
+        }
+        if (ui::Tapped(r)) {
+            g.menuSel = app.id;
+            g.iconX = r.x + tile / 2;
+            g.iconY = r.y + tile / 2;
+            OpenApp(app.id);
+        }
+    }
+    // Its name, over the tiles.
+    if (lit) {
+        const Font tf = Caps(22.0f, faded(kWhite));
+        const std::string name = ui::Fit(Upper(lit->label), 290.0f, tf);
+        const float tw = ui::TextWidth(name, tf);
+        ui::Image("glow", W / 2 - tw / 2 - 30.0f, 30.0f, tw + 60.0f, 50.0f, faded(0x3856D6EC));
+        ui::Label(W / 2, 44.0f, name, tf);
+    }
+    // The pages: the arrows either side of the tiles, and a mark for each
+    // under them.
+    if (pages > 1) {
+        const float mid = y0 + (tile * 3 + gap * 2) / 2;
+        const Rect prev{0, mid - 40.0f, x0 - 1.0f, 80.0f}, next{x0 + gridW + 1.0f, mid - 40.0f, x0 - 1.0f, 80.0f};
+        if (g.menuPage > 0) {
+            Chevron(6.0f, mid, true, 11.0f, 3.0f, faded(ui::Pressing(prev) ? kWhite : kSmTeal));
+            if (ui::Tapped(prev)) --g.menuPage;
+        }
+        if (g.menuPage < pages - 1) {
+            Chevron(W - 6.0f, mid, false, 11.0f, 3.0f, faded(ui::Pressing(next) ? kWhite : kSmTeal));
+            if (ui::Tapped(next)) ++g.menuPage;
+        }
+        const float dy = y0 + tile * 3 + gap * 2 + 16.0f;
+        for (int p = 0; p < pages; ++p) {
+            const float dx = W / 2 + (p - (pages - 1) / 2.0f) * 14.0f;
+            ui::Fill(dx - 3.0f, dy, 6.0f, 6.0f, faded(p == g.menuPage ? kSmTeal : 0x5056D6EC));
+        }
+    }
+    // The soft keys.
+    const float sy = ui::kScreenH - 34.0f;
+    ui::Gradient(0, sy - 14.0f, W, 48.0f, 0x00000000, 0xC8000000);
+    const Rect select{0, sy - 8.0f, 130.0f, 42.0f}, off{W - 130.0f, sy - 8.0f, 130.0f, 42.0f};
+    ui::Label(14.0f, sy, "Select", F(17.0f, ui::Pressing(select) ? kSmTeal : kWhite, sprite::Align::Left, 0));
+    ui::Label(W - 14.0f, sy, "Off", F(17.0f, ui::Pressing(off) ? kSmTeal : kWhite, sprite::Align::Right, 0));
+    if (ui::Tapped(select) && lit) {
+        const size_t index = static_cast<size_t>(lit - apps.data()) - first;
+        g.iconX = x0 + (index % 3) * (tile + gap) + tile / 2;
+        g.iconY = y0 + (index / 3) * (tile + gap) + tile / 2;
+        OpenApp(lit->id);
+    }
+    if (ui::Tapped(off)) Sleep();
+}
+
 void HomeScreen() {
+    if (Shattered()) {
+        ShatteredMenu();
+        return;
+    }
     Wallpaper();
     StatusBar();
     std::vector<config::App> grid, dock;
@@ -3264,7 +3623,7 @@ std::vector<std::pair<std::string, std::string>> g_waitingTexts;
 
 void IncomingText(const char* number, const char* body) {
     // Out of service, a text waits for the signal to come back.
-    if (!coverage::HasService()) {
+    if (SilentHill() || !coverage::HasService()) {
         g_waitingTexts.emplace_back(number, body);
         return;
     }
@@ -4103,14 +4462,19 @@ void FlashlightFrame() {
         }
     }
     if (!onPhone) {
-        reinterpret_cast<void(__thiscall*)(uintptr_t, V3*, unsigned, bool)>(kBonePosition)(
-            ped, &hand, PhoneWeaponType() > 0 ? kRightHandBone : kLeftHandBone, false);
+        float origin[3]{}, direction[3]{};
+        const auto& cfg = config::Get();
+        if (!phone_model::LeftHandLamp(ped, cfg.handTurn, cfg.handOffset, cfg.handFlip, origin, direction)) return;
+        hand = {origin[0], origin[1], origin[2]};
+        // Keep the beam aimed along the player's heading even when the idle
+        // animation rolls the handset sideways. Only its origin follows the lens.
     }
-    const float k = 0.25f + 0.75f * Darkness();
+    const float ambient = std::clamp((g.lightR + g.lightG + g.lightB) / 3.0f, 0.0f, 1.0f);
+    const float k = SilentHill() ? std::clamp(1.0f - ambient, 0.3f, 1.0f) : 0.25f + 0.75f * Darkness();
 
     // The pool of light on the ground ahead, reaching up the walls it meets.
     constexpr float kReach = 6.0f, kWidth = 3.2f;
-    V3 pool{at[0] + fx * kReach, at[1] + fy * kReach, at[2]};
+    V3 pool{hand.x + fx * kReach, hand.y + fy * kReach, hand.z - 0.8f};
     const uintptr_t texture = *reinterpret_cast<const uintptr_t*>(kHeadlightTexture);
     if (texture) {
         reinterpret_cast<void(__cdecl*)(uint8_t, uintptr_t, const V3*, float, float, float, float, short, uint8_t,
@@ -4121,7 +4485,7 @@ void FlashlightFrame() {
     }
     // The people and cars out in the beam - reaching back not quite as far
     // as CJ, so it is not his own jeans that light up.
-    const V3 lit{at[0] + fx * 5.0f, at[1] + fy * 5.0f, hand.z};
+    const V3 lit{hand.x + fx * 5.0f, hand.y + fy * 5.0f, hand.z};
     reinterpret_cast<void(__cdecl*)(uint8_t, V3, V3, float, float, float, float, uint8_t, bool, void*)>(kAddPointLight)(
         0, lit, V3{0, 0, 0}, 4.5f, 0.85f * k, 0.85f * k, 0.72f * k, 0, false, nullptr);
     // The little lamp itself, on the lens.
@@ -4493,7 +4857,7 @@ float ZoomedFov() {
 // then, the game's camera goes to the lens (under the flash), and it is put
 // straight back after.
 void PlaceGameCamera(int handle) {
-    if (g.camera.shot == 0) {
+    if (g.camera.shot == 0 && !SilentHill()) {
         if (g.camera.gameCameraMoved) {
             script::Command(kCameraFov, {kFov, kFov, 1, false});
             script::Command(kRestoreCamera, {});
@@ -4525,8 +4889,26 @@ bool CanStartCamera() {
     return input::Install();
 }
 
+bool g_cameraControlsHeld = false;
+bool g_restoreCameraPending = false;
+void StopPose();
+
+void RestoreCameraControl() {
+    if (g.camera.gameCameraMoved) {
+        script::Command(kCameraFov, {kFov, kFov, 1, false});
+        script::Command(kRestoreCamera, {});
+        g.camera.gameCameraMoved = false;
+    }
+    if (g_cameraControlsHeld) {
+        script::Command(kSetPlayerControl, {0, true});
+        g_cameraControlsHeld = false;
+    }
+}
+
 void StartCamera(bool selfie) {
     if (g.camera.on || !CanStartCamera()) return;
+    g_restoreCameraPending = false;
+    RestoreCameraControl();
     const int handle = script::PedHandle(PlayerPed());
     const picture::Picture thumb = g.camera.thumb;
     const std::string thumbPath = g.camera.thumbPath;
@@ -4548,6 +4930,7 @@ void StartCamera(bool selfie) {
     const game::Point screen = game::ScreenSize();
     input::SetCursor({screen.x / 2, screen.y / 2});
     script::Command(kSetPlayerControl, {0, false});
+    g_cameraControlsHeld = true;
     LoadLastPhoto();
     logfile::Line("phone: camera on (%s)", selfie ? "front" : "back");
 }
@@ -4572,16 +4955,16 @@ void EndShot() {
 // camera was opened from. Otherwise the camera was taken away (a car, a
 // call, a cutscene) and the rest of the phone is left to whoever did it.
 void StopCamera(bool toPhone) {
-    if (!g.camera.on) return;
+    const bool wasOn = g.camera.on;
     g.camera.on = false;
     EndShot();
     viewfinder::Update(false);
-    if (g.camera.gameCameraMoved) {
-        script::Command(kCameraFov, {kFov, kFov, 1, false});
-        script::Command(kRestoreCamera, {});
-        g.camera.gameCameraMoved = false;
-    }
-    script::Command(kSetPlayerControl, {0, true});
+    // Input can close the camera during HUD drawing. Restore immediately and
+    // once at the next simulation boundary, after the last fixed-camera frame.
+    g_restoreCameraPending = g_restoreCameraPending || g.camera.gameCameraMoved || g_cameraControlsHeld;
+    RestoreCameraControl();
+    if (!wasOn) return;
+    StopPose();
     if (g.screen == Screen::Camera && !g.cameraPaused) {
         StartMove(Screen::Camera, g.camera.returnTo);
         g.screen = g.camera.returnTo;
@@ -4616,7 +4999,8 @@ void CameraInput() {
 
     // The right button closes the camera (or selfie) and goes back to the
     // phone, as Escape does; everywhere else it lowers the phone.
-    bool shoot = input::LeftPressed(), flip = false, close = input::RightPressed(), roll = false;
+    const bool lower = input::RightPressed();
+    bool shoot = input::LeftPressed(), flip = false, close = lower, roll = false;
     input::Key key{};
     while (input::NextKey(key)) {
         if (key.vk == VK_ESCAPE || key.vk == VK_BACK) close = true;
@@ -4627,6 +5011,7 @@ void CameraInput() {
     }
     if (close || roll) {
         StopCamera(true);
+        if (lower) Lower();
         if (roll) {
             g.roll.scanned = 0;
             g.roll.index = 0;
@@ -4652,6 +5037,15 @@ void CameraInput() {
 // Before CGame::Process: CJ turned and the game's camera placed for this
 // frame, so the view and CJ never disagree by a frame as he turns.
 void CameraBeforeFrame() {
+    if (g_restoreCameraPending && !g.camera.on) {
+        g_restoreCameraPending = false;
+        // A mission/cutscene may have acquired control since the HUD exit.
+        if (!PlayerCanUsePhone()) return;
+        script::Command(kCameraFov, {kFov, kFov, 1, false});
+        script::Command(kRestoreCamera, {});
+        script::Command(kSetPlayerControl, {0, true});
+        logfile::Line("phone: camera and player control restored at simulation boundary");
+    }
     if (!g.camera.on) return;
     const uintptr_t ped = PlayerPed();
     if (!ped) return;
@@ -4694,7 +5088,7 @@ void UpdateReflection() {
     g_reflecting = false;
     const uintptr_t ped = PlayerPed();
     game::VehicleState vehicle{};
-    if (!ped || !config::Get().reflections || !g.out || g.slide < 0.5f || !PlayerCanUsePhone() ||
+    if (SilentHill() || !ped || !config::Get().reflections || !g.out || g.slide < 0.5f || !PlayerCanUsePhone() ||
         game::PlayerVehicleState(vehicle)) {
         viewfinder::Update(false);
         return;
@@ -4794,8 +5188,15 @@ void UpdateCamera() {
     Lens(handle, eye, target);
     viewfinder::Aim({eye.x, eye.y, eye.z}, {target.x, target.y, target.z});
     viewfinder::Lens();
-    viewfinder::Update(g.slide > 0.5f && config::Get().liveView);
+    viewfinder::Update(!SilentHill() && g.slide > 0.5f && config::Get().liveView);
 }
+
+// Silent Hill uses the completed main view, including its custom post effects.
+// It never changes the mirror camera or adds a second world render.
+IDirect3DTexture9* g_cameraPreview = nullptr;
+UINT g_cameraPreviewSize[2] = {};
+bool g_cameraPreviewReady = false;
+void CaptureCameraPreview();
 
 // The Camera app's screen, inside the phone.
 void CameraScreen() {
@@ -4823,8 +5224,19 @@ void CameraScreen() {
 
     // The picture, filling the viewfinder at the zoom; the view is wider
     // than it is, so the sides fall outside and are cut off.
-    const uintptr_t live = viewfinder::Texture();
-    if (live) {
+    const uintptr_t live = SilentHill() ? 0 : viewfinder::Texture();
+    const bool preview = SilentHill() && g_cameraPreviewReady;
+    if (preview) {
+        ui::Flush();
+        const float x0 = ui::ToPixelX(0), y0 = ui::ToPixelY(0);
+        const float x1 = ui::ToPixelX(ui::kScreenW), y1 = ui::ToPixelY(kViewH);
+        const float h = y1 - y0;
+        const float w = h * g_cameraPreviewSize[0] / g_cameraPreviewSize[1];
+        const float cx = (x0 + x1) / 2;
+        sprite::BeginScissor(x0, y0, x1, y1);
+        DrawDeviceTexture(g_cameraPreview, cx - w / 2, y0, cx + w / 2, y1);
+        sprite::EndScissor();
+    } else if (live) {
         const float x0 = ui::ToPixelX(0), y0 = ui::ToPixelY(0);
         const float x1 = ui::ToPixelX(ui::kScreenW), y1 = ui::ToPixelY(kViewH);
         const float h = (y1 - y0) * g.camera.zoom, w = h * viewfinder::Aspect();
@@ -4840,7 +5252,7 @@ void CameraScreen() {
     // is taken or the camera turned round, then drawn apart.
     const ULONGLONG opened = std::max({g.camera.since, g.camera.flashAt, g.camera.flippedAt});
     float shut = 0.0f;
-    if (g.camera.shot != 0 || !live) shut = 1.0f;
+    if (g.camera.shot != 0 || (!live && !preview)) shut = 1.0f;
     else if (now - opened < 350) shut = 1.0f - (now - opened) / 350.0f;
     if (shut > 0.0f) {
         const float half = kViewH / 2 * shut;
@@ -5361,11 +5773,13 @@ void SettingsScreen() {
     const float top = kContentTop, bottom = ui::kScreenH;
     float y = BeginList(top, bottom) + 14.0f;
     const float y0 = y;
-    if (SettingRow(y, "g_wallpaper", "Wallpaper", kWallpaperNames[s.wallpaper], true, true)) {
-        Go(Screen::Photos);
-        return;
+    if (!Shattered()) {
+        if (SettingRow(y, "g_wallpaper", "Wallpaper", kWallpaperNames[s.wallpaper], true, true)) {
+            Go(Screen::Photos);
+            return;
+        }
+        y += 58.0f;
     }
-    y += 58.0f;
     // Sounds: each tone opens the list to pick from; then the phone's own
     // ticks, as the phone's Sounds settings have them.
     struct ToneRow {
@@ -5809,9 +6223,9 @@ void AboutScreen() {
 
     // What it is.
     const std::pair<const char*, std::string> info[] = {
-        {"Name", "Carl's iFruit"},
+        {"Name", SilentHill() ? "Harry Mason" : "Carl's iFruit"},
         {"My Number", phone_data::FormatNumber(d.settings.ownNumber)},
-        {"Model", "iFruit"},
+        {"Model", Shattered() ? "Shattered Memories" : "iFruit"},
         {"Version", std::string("Valkyrie OS ") + VALKYRIE_PHONE_VERSION},
     };
     const int count = static_cast<int>(sizeof info / sizeof info[0]);
@@ -5878,8 +6292,12 @@ void BootScreen() {
     // The mark, and its soft light.
     const float mark = Ease(clamp01((t - 600.0f) / 800.0f)) * out;
     const float size = 96.0f, mx = W / 2 - size / 2, my = H * 0.40f - size / 2;
-    ui::Image("glow", mx - 34.0f, my - 34.0f, size + 68.0f, size + 68.0f, faded(mark * 0.16f, 0xFFFFFF));
-    ui::Image("boot_mark", mx, my, size, size, faded(mark * 0.94f, 0xF2F4F8));
+    // The Shattered Memories phone's mark is the pad's ring of teal light.
+    const bool sm = Shattered();
+    const char* const markArt = sm ? "sm_boot" : "boot_mark";
+    ui::Image("glow", mx - 34.0f, my - 34.0f, size + 68.0f, size + 68.0f,
+              faded(mark * (sm ? 0.4f : 0.16f), sm ? 0x56D6EC : 0xFFFFFF));
+    ui::Image(markArt, mx, my, size, size, faded(mark * 0.94f, sm ? 0x7FE2F2 : 0xF2F4F8));
     // A light passing over it, once, left to right.
     const float sweep = (t - 1900.0f) / 900.0f;
     if (sweep > 0.0f && sweep < 1.0f) {
@@ -5887,7 +6305,7 @@ void BootScreen() {
         ui::Flush();
         sprite::BeginScissor(ui::ToPixelX(std::max(bx, mx)), ui::ToPixelY(my), ui::ToPixelX(std::min(bx + band, mx + size)),
                              ui::ToPixelY(my + size));
-        ui::Image("boot_mark", mx, my, size, size, faded(mark * 0.8f * std::sin(sweep * 3.14159265f), 0xFFFFFF));
+        ui::Image(markArt, mx, my, size, size, faded(mark * 0.8f * std::sin(sweep * 3.14159265f), 0xFFFFFF));
         ui::Flush();
         sprite::EndScissor();
     }
@@ -5914,7 +6332,7 @@ void BootScreen() {
         // The fill: pale, catching light along its top, a glow at its end.
         const float fw = bw * done;
         if (fw > 0.5f) {
-            ui::Gradient(bx, by, fw, bh, faded(bar, 0xF4F6FA), faded(bar, 0xB4B8C2));
+            ui::Gradient(bx, by, fw, bh, faded(bar, sm ? 0x9CEAF6 : 0xF4F6FA), faded(bar, sm ? 0x38A8C8 : 0xB4B8C2));
             ui::Fill(bx, by, fw, 1.0f, faded(bar * 0.6f, 0xFFFFFF));
             ui::Image("glow", bx + fw - 7.0f, by - 6.0f, 14.0f, bh + 12.0f, faded(bar * 0.35f, 0xFFFFFF));
         }
@@ -6240,6 +6658,7 @@ void Lower() {
     }
     g.focused = false;
     input::Capture(false);
+    StopPose();
 }
 
 void Raise() {
@@ -6249,6 +6668,45 @@ void Raise() {
     g.focused = true;
     g.placeCursor = true;
     input::Capture(true);
+}
+
+// The Shattered Memories handset's A: wakes the screen, unlocks, opens the
+// app lit on the menu. Apps keep their own on-screen actions.
+void KeyA() {
+    if (g.asleep) {
+        Wake();
+        return;
+    }
+    if (!phone_data::Get().settings.poweredOn || g.call.active || g.alarmRinging || g.game || g.powerMenu) return;
+    if (g.screen == Screen::Lock) {
+        Unlock();
+    } else if (g.screen == Screen::Home) {
+        if (!g.menuSel.empty()) OpenApp(g.menuSel);
+    }
+}
+
+// Its minus: back - out of a game, off a call, to the first page of the
+// menu, or back a screen where the screen has a way back.
+void KeyMinus() {
+    if (g.asleep) {
+        Wake();
+        return;
+    }
+    if (g.powerMenu) {
+        g.powerMenu = false;
+    } else if (g.alarmRinging) {
+        return;
+    } else if (g.camera.on) {
+        StopCamera(true);
+    } else if (g.game) {
+        g.game.reset();
+    } else if (g.call.active) {
+        EndCall();
+    } else if (g.screen == Screen::Home) {
+        g.menuPage = 0;
+    } else {
+        g.backPending = true;
+    }
 }
 
 void PutAway() {
@@ -6477,6 +6935,8 @@ WeaponIconFn g_weaponIcon[2] = {};
 
 template <int I>
 void __cdecl WeaponIcon(void* ped, int x, int y, float alpha) {
+    // The Silent Hill HUD is owned by Atmosphere; no floating weapon phone.
+    if (SilentHill() && g.holding && ped && reinterpret_cast<uintptr_t>(ped) == PlayerPed()) return;
     if (g.holding && !g.phoneAtEar && PhoneWeaponType() <= 0 && ped && reinterpret_cast<uintptr_t>(ped) == PlayerPed() &&
         g.dictionary >= 0) {
         const game::Point screen = game::ScreenSize();
@@ -6620,6 +7080,10 @@ IDirect3DTexture9* DeviceCopy(const char* name) { return DeviceCopyOf(ui::Tex(na
 // so RenderWare's own record of the stage stays true. Held; the caller
 // releases it.
 IDirect3DTexture9* LiveMirror(IDirect3DDevice9* device) {
+    if (SilentHill() && !g.camera.on && config::Get().reflections && g_cameraPreviewReady && g_cameraPreview) {
+        g_cameraPreview->AddRef();
+        return g_cameraPreview;
+    }
     if (!g_reflecting || !device) return nullptr;
     const uintptr_t mirror = viewfinder::Texture();
     if (!mirror) return nullptr;
@@ -6673,6 +7137,31 @@ void FreezeFrame() {
     back->Release();
 }
 
+void CaptureCameraPreview() {
+    g_cameraPreviewReady = false;
+    auto* device = *reinterpret_cast<IDirect3DDevice9**>(0xC97C28);
+    if (!device) return;
+    IDirect3DSurface9* source = nullptr;
+    if (FAILED(device->GetRenderTarget(0, &source)) || !source) return;
+    D3DSURFACE_DESC desc{};
+    source->GetDesc(&desc);
+    if (g_cameraPreview && (g_cameraPreviewSize[0] != desc.Width || g_cameraPreviewSize[1] != desc.Height)) {
+        g_cameraPreview->Release();
+        g_cameraPreview = nullptr;
+    }
+    if (!g_cameraPreview && SUCCEEDED(device->CreateTexture(desc.Width, desc.Height, 1, D3DUSAGE_RENDERTARGET,
+            desc.Format, D3DPOOL_DEFAULT, &g_cameraPreview, nullptr))) {
+        g_cameraPreviewSize[0] = desc.Width;
+        g_cameraPreviewSize[1] = desc.Height;
+    }
+    IDirect3DSurface9* target = nullptr;
+    if (g_cameraPreview && SUCCEEDED(g_cameraPreview->GetSurfaceLevel(0, &target))) {
+        g_cameraPreviewReady = SUCCEEDED(device->StretchRect(source, nullptr, target, nullptr, D3DTEXF_NONE));
+        target->Release();
+    }
+    source->Release();
+}
+
 void ReleaseFreeze() {
     if (g_freeze) g_freeze->Release();
     g_freeze = nullptr;
@@ -6687,6 +7176,9 @@ HRESULT __stdcall ResetDevice(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* p
     // given back first.
     phone3d::ReleaseDeviceObjects();
     viewfinder::ReleaseDeviceObjects();
+    if (g_cameraPreview) g_cameraPreview->Release();
+    g_cameraPreview = nullptr;
+    g_cameraPreviewReady = false;
     ReleaseFreeze();
     return g_previousReset(device, params);
 }
@@ -6698,7 +7190,9 @@ bool Phone3dReady(IDirect3DDevice9* device) {
     if (state) return state > 0 && device && device->TestCooperativeLevel() == D3D_OK;
     state = -1;
     if (!device || !config::Get().model3d) return false;
-    const std::string dff = bundle::Path("valkyrie-phone-model.dff"), txd = bundle::Path("valkyrie-phone-model.txd");
+    std::string txd = Shattered() ? bundle::Path("valkyrie-phone-model-sm.txd") : std::string();
+    if (txd.empty()) txd = bundle::Path("valkyrie-phone-model.txd");
+    const std::string dff = bundle::Path("valkyrie-phone-model.dff");
     if (dff.empty() || txd.empty() || !phone3d::Load(device, dff)) {
         logfile::Line("phone: the 3D phone could not be loaded - the flat one is drawn");
         return false;
@@ -6872,9 +7366,9 @@ IDirect3DPixelShader9* LightingShader() {
 bool LightHandset(bool glassOnly, float x, float y, float w, float h, const Lighting& light) {
     auto* device = *reinterpret_cast<IDirect3DDevice9**>(0xC97C28);
     IDirect3DPixelShader9* shader = LightingShader();
-    IDirect3DTexture9* body = DeviceCopy("body");
-    IDirect3DTexture9* normals = DeviceCopy("phone_normal");
-    IDirect3DTexture9* material = DeviceCopy("phone_material");
+    IDirect3DTexture9* body = DeviceCopy(BodyArt("body"));
+    IDirect3DTexture9* normals = DeviceCopy(BodyArt("phone_normal"));
+    IDirect3DTexture9* material = DeviceCopy(BodyArt("phone_material"));
     IDirect3DTexture9* env = DeviceCopy("phone_env");
     // The live reflection, when the world is being drawn for it: its
     // Direct3D texture is had by letting RenderWare bind it to a spare stage
@@ -6892,6 +7386,10 @@ bool LightHandset(bool glassOnly, float x, float y, float w, float h, const Ligh
             }
             bind(0, 7);
         }
+    }
+    if (SilentHill() && !g.camera.on && config::Get().reflections && g_cameraPreviewReady && g_cameraPreview) {
+        live = g_cameraPreview;
+        live->AddRef();
     }
     if (live) env = live;
     struct Holder {
@@ -6988,7 +7486,7 @@ void Frame() {
         const char* user = reinterpret_cast<const char*(__cdecl*)()>(kUserFolder)();
         std::string folder = user ? user : g_gameDir;
         if (!folder.empty() && folder.back() != '\\') folder += '\\';
-        phone_data::Init(folder + "valkyrie-phone.dat");
+        phone_data::Init(folder + (SilentHill() ? "valkyrie-phone-silent-hill.dat" : "valkyrie-phone.dat"));
         phone_data::Load();
         for (const auto& c : config::Get().contacts) {
             if (!BuiltInHidden(c.name)) phone_data::Get().builtIn.push_back({c.name, c.number, c.picture});
@@ -7019,7 +7517,8 @@ void Frame() {
         if (_stricmp(config::Get().model.c_str(), "valkyrie-phone-model.dff") == 0 &&
             !bundle::Path("valkyrie-phone-model.dff").empty()) {
             modelFile = bundle::Path("valkyrie-phone-model.dff");
-            modelTextures = bundle::Path("valkyrie-phone-model.txd");
+            modelTextures = Shattered() ? bundle::Path("valkyrie-phone-model-sm.txd") : std::string();
+            if (modelTextures.empty()) modelTextures = bundle::Path("valkyrie-phone-model.txd");
         }
         if (phone_model::Load(modelFile, modelTextures) &&
             config::Get().shine > 0.0f) {
@@ -7072,7 +7571,7 @@ void Frame() {
     if (g_config.key && input::KeyPressed(g_config.key) && !typing) {
         // The key wins over an ask still waiting.
         InterlockedExchange(&g_openAsked, 0);
-        if (g.camera.on) StopCamera(true);
+        if (g.camera.on) PutAway();
         else if (!g.out) Open();
         else if (!g.focused) Raise();
         else PutAway();
@@ -7944,6 +8443,8 @@ void Draw() {
         if (g.focused) Lower();
         return;
     }
+    if (SilentHill() && g.out && (g.camera.on || config::Get().reflections)) CaptureCameraPreview();
+    else g_cameraPreviewReady = false;
     g.drawnFrame = g.frame;
     g.drawnSinceUp = true;
     // The phone in CJ's left hand, into the game's own picture before
@@ -8070,7 +8571,7 @@ void Draw() {
         lighting.reset();
         const uint32_t lit = 0xFF000000 | (static_cast<uint32_t>(g.lightR * 255.0f) << 16) |
                              (static_cast<uint32_t>(g.lightG * 255.0f) << 8) | static_cast<uint32_t>(g.lightB * 255.0f);
-        sprite::Draw(ui::Tex("body"), x, y, x + w, y + texH, lit);
+        sprite::Draw(ui::Tex(BodyArt("body")), x, y, x + w, y + texH, lit);
     }
 
     const float sl = x + w * phone_art::kScreenLeft;
@@ -8164,6 +8665,12 @@ void Draw() {
     }
 
     DrawAnimated();
+    // An app root has no back button; minus returns it to the menu.
+    // During a transition leave the request for the settled screen.
+    if (g.backPending && !Moving()) {
+        g.backPending = false;
+        if (g.screen != Screen::Lock && g.screen != Screen::Home) Go(Screen::Home);
+    }
     // The page's textures are only held while the browser is open.
     if (g.screen != Screen::Internet || g.call.active || g.game) web::Release();
     if (g.screen != Screen::CameraRoll && g.screen != Screen::PhotoOpen) ReleaseRoll();
@@ -8275,7 +8782,7 @@ void Draw() {
         const float ink = config::Get().features.outline ? size.y / 1080.0f * look.inkWidth : 0.0f;
         if (!phone3d::Draw(device, pose, light, g_parts3d, env, ink, now / 1000.0f)) {
             // The flat handset this once, the screen laid over it.
-            if (!LightHandset(false, x, y, w, texH, l)) sprite::Draw(ui::Tex("body"), x, y, x + w, y + texH);
+            if (!LightHandset(false, x, y, w, texH, l)) sprite::Draw(ui::Tex(BodyArt("body")), x, y, x + w, y + texH);
             DrawDeviceTexture(phone3d::ScreenTexture(), sl, st, sl + sw, st + pose.screen[3]);
         }
         if (live) live->Release();
@@ -8305,7 +8812,11 @@ void Draw() {
     const float ppp = ui::PixelsPerPoint();
     const float homeX = (x + w * phone_art::kHomeX - sl) / ppp;
     const float homeY = (y + texH * phone_art::kHomeY - st) / ppp;
-    const float homeR = w * phone_art::kHomeRadius / ppp;
+    const bool sm = Shattered();
+    // The Shattered Memories handset's pad stands where the home button is,
+    // and larger.
+    const float homeRadius = sm ? phone_art_sm::kPadRadius : phone_art::kHomeRadius;
+    const float homeR = w * homeRadius / ppp;
     // Pressed, the button sinks a little - a shade darker and a hair smaller -
     // and clicks when it comes back up. It is round: the corners of the
     // square round it are not the button.
@@ -8313,7 +8824,7 @@ void Draw() {
     if (onHome && ui::Pressing(Rect{homeX - homeR, homeY - homeR, homeR * 2, homeR * 2})) {
         float cx, cy;
         place(x + w * phone_art::kHomeX, y + texH * phone_art::kHomeY, cx, cy);
-        const float r = w * phone_art::kHomeRadius * 0.92f * placedScale;
+        const float r = w * homeRadius * 0.92f * placedScale;
         sprite::Draw(ui::Tex("disc"), cx - r, cy - r, cx + r, cy + r, 0x50000000);
     }
     if (ui::Tapped(homeX - homeR, homeY - homeR, homeR * 2, homeR * 2) && onHome && !Dead()) {
@@ -8329,6 +8840,28 @@ void Draw() {
             g.pickingForCompose = false;
             Go(Screen::Home);
         }
+    }
+
+    // The Shattered Memories handset's other two keys, either side of the
+    // pad: A selects, minus goes back.
+    if (sm) {
+        auto key = [&](float fx, float fy) {
+            const float kx = (x + w * fx - sl) / ppp, ky = (y + texH * fy - st) / ppp;
+            const float kr = w * phone_art_sm::kKeyRadius / ppp;
+            const Rect r{kx - kr, ky - kr, kr * 2, kr * 2};
+            const bool on = std::hypot(ui::CursorX() - kx, ui::CursorY() - ky) <= kr;
+            if (on && ui::Pressing(r)) {
+                float cx, cy;
+                place(x + w * fx, y + texH * fy, cx, cy);
+                const float pr = w * phone_art_sm::kKeyRadius * 0.92f * placedScale;
+                sprite::Draw(ui::Tex("disc"), cx - pr, cy - pr, cx + pr, cy + pr, 0x50000000);
+            }
+            const bool tapped = on && ui::Tapped(r) && !Dead();
+            if (tapped && !phone_data::Get().settings.silent) sound::Click();
+            return tapped;
+        };
+        if (key(phone_art_sm::kAX, phone_art_sm::kAY)) KeyA();
+        if (key(phone_art_sm::kMinusX, phone_art_sm::kMinusY)) KeyMinus();
     }
 
     // The side buttons. Each is given a little more room than it has, out

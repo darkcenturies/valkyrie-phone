@@ -187,6 +187,9 @@ foreach ($targetSpec in $targets) {
         & (Join-Path $root "tools\pack-phone-txd.ps1") -Source (Join-Path $root "valkyrie-phone\assets\model\textures") -Output $modelTxd
         $bundleFiles.Add(@("valkyrie-phone-model.dff", (Join-Path $root "valkyrie-phone\assets\model\valkyrie-phone-model.dff")))
         $bundleFiles.Add(@("valkyrie-phone-model.txd", $modelTxd))
+        $modelSmTxd = Join-Path $build "valkyrie-phone-model-sm.txd"
+        & (Join-Path $root "tools\pack-phone-txd.ps1") -Source (Join-Path $root "valkyrie-phone\assets\model\textures-sm") -Output $modelSmTxd
+        $bundleFiles.Add(@("valkyrie-phone-model-sm.txd", $modelSmTxd))
         # The signal the map's masts give, cell by cell (tools\signal-coverage).
         $signal = Join-Path $root "valkyrie-phone\assets\signal\valkyrie-signal.bin"
         if (Test-Path -LiteralPath $signal) { $bundleFiles.Add(@("valkyrie-signal.bin", $signal)) }

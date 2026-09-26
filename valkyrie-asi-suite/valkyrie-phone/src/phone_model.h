@@ -48,6 +48,8 @@ bool RenderInLeftHand(uintptr_t ped, const float turn[3], const float offset[3],
 // Where the phone in the left hand is, as of the last frame the game
 // animated the ped: its middle and the way it faces.
 bool LeftHandPlace(uintptr_t ped, const float turn[3], const float offset[3], bool flip, float pos[3], float facing[3]);
+// The rear lens in the same model transform used by DrawHand.
+bool LeftHandLamp(uintptr_t ped, const float turn[3], const float offset[3], bool flip, float pos[3], float direction[3]);
 // Let go of the copy (when the phone is put away).
 void ReleaseHand();
 
