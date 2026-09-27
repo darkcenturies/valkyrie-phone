@@ -18,6 +18,8 @@ namespace phone_model {
 // game's phone in place, when the files are missing or will not load.
 bool Load(const std::string& dff, const std::string& txd);
 bool Loaded();
+// Whether the game has model id in memory (its model info has an RwObject).
+bool InMemory(int id);
 
 // While true, model 330 is this phone's; while false, the game's. Call before
 // the cellphone model is put in CJ's hand, and again once it is taken away.

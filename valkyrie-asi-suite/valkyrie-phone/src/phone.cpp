@@ -4405,8 +4405,6 @@ constexpr uintptr_t kStoreShadow = 0x707390;     // CShadows::StoreShadowToBeRen
 // gpShadowHeadLightsTex2, "headlight1": one lamp's pool (the first is a
 // car's pair).
 constexpr uintptr_t kHeadlightTexture = 0xC403FC;
-constexpr uintptr_t kFrameLtm = 0x7F0990;          // RwFrameGetLTM
-constexpr size_t kPedWeaponObject = 0x4F4;         // CPed::m_pWeaponObject
 constexpr uintptr_t kRegisterCorona = 0x6FC580;  // CCoronas::RegisterCorona, by corona type
 constexpr uintptr_t kBonePosition = 0x5E4280;    // CPed::GetBonePosition
 constexpr uintptr_t kClockHours = 0xB70153, kClockMinutes = 0xB70152;
@@ -4443,25 +4441,10 @@ void FlashlightFrame() {
     if (len < 0.01f) return;
     fx /= len;
     fy /= len;
-    // The lamp: the lens on the phone's back. As the weapon in his hand, it
-    // is where the weapon model puts it (valkyriephone.dff's vp_lens, at
-    // 0.054, 0.016, 0.064 in the model); held otherwise, at his left hand.
+    // The lamp: the lens on the phone's back, at his left hand - where the
+    // phone is drawn, weapon or not.
     V3 hand{at[0], at[1], at[2] + 0.4f};
-    bool onPhone = false;
-    if (PhoneWeaponType() > 0) {
-        const uintptr_t object = *reinterpret_cast<const uintptr_t*>(ped + kPedWeaponObject);
-        const uintptr_t frame = object ? *reinterpret_cast<const uintptr_t*>(object + 4) : 0;
-        if (frame) {
-            if (const auto* m = reinterpret_cast<const float*>(
-                    reinterpret_cast<uintptr_t(__cdecl*)(uintptr_t)>(kFrameLtm)(frame))) {
-                constexpr float lx = 0.054f, ly = 0.016f, lz = 0.064f;
-                hand = {m[12] + m[0] * lx + m[4] * ly + m[8] * lz, m[13] + m[1] * lx + m[5] * ly + m[9] * lz,
-                        m[14] + m[2] * lx + m[6] * ly + m[10] * lz};
-                onPhone = true;
-            }
-        }
-    }
-    if (!onPhone) {
+    {
         float origin[3]{}, direction[3]{};
         const auto& cfg = config::Get();
         if (!phone_model::LeftHandLamp(ped, cfg.handTurn, cfg.handOffset, cfg.handFlip, origin, direction)) return;
@@ -6805,11 +6788,11 @@ void PlayAlert(const std::string& tone, ULONGLONG buzz) {
 //
 // With the Valkyrie Phone modloader folder in, and its line in fastman92's
 // weapon type config, the phone is a weapon of the game's own (VALKYRIEPHONE,
-// model 199500, the detonator's slot): the game scrolls to it and away,
-// draws it in CJ's hand and its icon on the HUD. Selected, the phone comes
+// model 23900, the detonator's slot): the game scrolls to it and away,
+// draws it in CJ's left hand. Selected, the phone comes
 // out; another weapon selected, it goes away; P selects it. Without them the
 // phone holds itself, as HoldPhone does below.
-constexpr int kPhoneWeaponModel = 199500;
+constexpr int kPhoneWeaponModel = 23900;
 constexpr int kPhoneWeaponSlot = 12;
 constexpr uintptr_t kGetWeaponInfo = 0x743C60;  // CWeaponInfo::GetWeaponInfo(type, skill)
 constexpr uintptr_t kGiveWeapon = 0x5E6080;     // CPed::GiveWeapon(type, ammo, bool)
@@ -6817,6 +6800,16 @@ constexpr size_t kPedWeapons = 0x5A0, kWeaponSize = 0x1C;  // CPed::m_aWeapons[1
 
 // The weapon type the game gave the phone, found by its model once the
 // weapon data is loaded; -1 when there is none.
+// A model the phone needs, loaded now only if the game does not have it
+// already: loading everything requested at once makes the game drop the
+// distant scenery (LODs) for a moment to make room.
+void EnsureModel(int id) {
+    if (phone_model::InMemory(id)) return;
+    reinterpret_cast<void(__cdecl*)(int, int)>(kRequestModel)(id, 0x8);
+    reinterpret_cast<void(__cdecl*)(bool)>(kLoadAllRequestedModels)(false);
+    logfile::Line("phone: model %d was not in memory - loaded it", id);
+}
+
 int PhoneWeaponType() {
     static int type = -2;
     if (type != -2) return type;
@@ -6848,8 +6841,7 @@ void WieldPhone(uintptr_t ped, int type) {
     // His phone is always on him: given back whenever its slot is empty (a
     // detonator, arrest or death having taken it).
     if (WeaponInSlot(ped, kPhoneWeaponSlot) == 0) {
-        reinterpret_cast<void(__cdecl*)(int, int)>(kRequestModel)(kPhoneWeaponModel, 0x8);
-        reinterpret_cast<void(__cdecl*)(bool)>(kLoadAllRequestedModels)(false);
+        EnsureModel(kPhoneWeaponModel);
         reinterpret_cast<void(__thiscall*)(uintptr_t, int, unsigned, bool)>(kGiveWeapon)(ped, type, 1, false);
     }
     if (WeaponInSlot(ped, kPhoneWeaponSlot) != type) {
@@ -6858,8 +6850,17 @@ void WieldPhone(uintptr_t ped, int type) {
         return;
     }
     game::VehicleState vehicle{};
-    const bool onFoot = !game::PlayerVehicleState(vehicle);
-    const bool wielded = onFoot && CurrentSlot(ped) == kPhoneWeaponSlot;
+    // In a vehicle, or getting in or out of one (the game takes the weapon
+    // out of his hand for that), the phone stays out on the screen and the
+    // weapon slot is left alone: losing the slot then is not another weapon
+    // chosen. Back on foot with the phone still out, it is in his hand again.
+    if (game::PlayerVehicleState(vehicle) || InTransition(ped)) {
+        g.wieldedLastFrame = false;
+        g.holding = false;
+        return;
+    }
+    const bool onFoot = true;
+    const bool wielded = CurrentSlot(ped) == kPhoneWeaponSlot;
     auto select = [&](int slot) { reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, slot); };
     const bool want = (g.out || g.camera.on) && onFoot && PlayerAble();
     if (wielded && !g.wieldedLastFrame && !g.out && PlayerCanUsePhone()) {
@@ -6883,6 +6884,8 @@ void WieldPhone(uintptr_t ped, int type) {
     }
     g.wieldedLastFrame = CurrentSlot(ped) == kPhoneWeaponSlot && onFoot;
     g.holding = g.wieldedLastFrame;
+    // Drawn in his left hand from model 330, as when it holds itself.
+    if (g.holding) phone_model::Use(true);
 }
 
 void HoldPhone() {
@@ -6902,8 +6905,7 @@ void HoldPhone() {
     auto fists = [&] { reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, 0); };
 
     if (want && !g.holding) {
-        reinterpret_cast<void(__cdecl*)(int, int)>(kRequestModel)(kCellphoneModel, 0x8);
-        reinterpret_cast<void(__cdecl*)(bool)>(kLoadAllRequestedModels)(false);
+        EnsureModel(kCellphoneModel);
         // This phone's own model, not the game's (phone_model.h).
         phone_model::Use(true);
         g.holsteredSlot = slot();
@@ -6926,53 +6928,6 @@ void HoldPhone() {
     }
 }
 
-// The HUD's weapon icon shows the phone while CJ holds it: CHud::
-// DrawWeaponIcon(ped, x, y, alpha), taken at its two calls in CHud::
-// DrawPlayerInfo (the same leaf calls valkyrie-inventory's HUD policy uses;
-// whichever was there first is called on).
-using WeaponIconFn = void(__cdecl*)(void*, int, int, float);
-WeaponIconFn g_weaponIcon[2] = {};
-
-template <int I>
-void __cdecl WeaponIcon(void* ped, int x, int y, float alpha) {
-    // The Silent Hill HUD is owned by Atmosphere; no floating weapon phone.
-    if (SilentHill() && g.holding && ped && reinterpret_cast<uintptr_t>(ped) == PlayerPed()) return;
-    if (g.holding && !g.phoneAtEar && PhoneWeaponType() <= 0 && ped && reinterpret_cast<uintptr_t>(ped) == PlayerPed() &&
-        g.dictionary >= 0) {
-        const game::Point screen = game::ScreenSize();
-        const float w = 47.0f * screen.x / 640.0f, h = 58.0f * screen.y / 448.0f;
-        const float side = std::min(w, h);
-        const float x0 = x + (w - side) / 2, y0 = y + (h - side) / 2;
-        const uint32_t a = static_cast<uint32_t>(std::clamp(alpha, 0.0f, 255.0f));
-        // [Phone] WeaponIcon: a picture in the phone's own textures.
-        uintptr_t icon = ui::Tex(config::Get().weaponIcon.c_str());
-        if (!icon) icon = ui::Tex("app_phone");
-        sprite::Draw(icon, x0, y0, x0 + side, y0 + side, (a << 24) | 0xFFFFFF);
-        return;
-    }
-    if (g_weaponIcon[I]) g_weaponIcon[I](ped, x, y, alpha);
-}
-
-void HookWeaponIcon() {
-    const uintptr_t sites[2] = {0x58F944, 0x58F9B1};
-    void* ours[2] = {reinterpret_cast<void*>(&WeaponIcon<0>), reinterpret_cast<void*>(&WeaponIcon<1>)};
-    for (int i = 0; i < 2; ++i) {
-        auto* site = reinterpret_cast<uint8_t*>(sites[i]);
-        if (*site != 0xE8) {
-            logfile::Line("phone: the weapon icon call at %08X is not a call - the HUD keeps its icon",
-                          static_cast<unsigned>(sites[i]));
-            continue;
-        }
-        const uintptr_t target = sites[i] + 5 + *reinterpret_cast<const int32_t*>(site + 1);
-        g_weaponIcon[i] = reinterpret_cast<WeaponIconFn>(target);
-        DWORD old = 0;
-        if (!VirtualProtect(site, 5, PAGE_EXECUTE_READWRITE, &old)) continue;
-        *reinterpret_cast<int32_t*>(site + 1) =
-            static_cast<int32_t>(reinterpret_cast<uintptr_t>(ours[i]) - (sites[i] + 5));
-        VirtualProtect(site, 5, old, &old);
-        FlushInstructionCache(GetCurrentProcess(), site, 5);
-    }
-}
 
 // Typing goes to whichever field the screen marked as focused last frame.
 void TakeKeys() {
@@ -7477,7 +7432,6 @@ void Frame() {
     static bool iconHooked = false;
     if (!iconHooked) {
         iconHooked = true;
-        HookWeaponIcon();
         phone_model::HookWeaponPass();
     }
 
@@ -7542,8 +7496,7 @@ void Frame() {
             pose.wearStrong = config::Get().features.scratchStrong;
             if (!phone3d::Prepare(device, pose)) logfile::Line("phone: the 3D phone's shaders would not compile");
         }
-        reinterpret_cast<void(__cdecl*)(int, int)>(kRequestModel)(kCellphoneModel, 0x8);
-        reinterpret_cast<void(__cdecl*)(bool)>(kLoadAllRequestedModels)(false);
+        EnsureModel(kCellphoneModel);
         GuardPhoneRadio();
         logfile::Line("phone: made ready in %llu ms", GetTickCount64() - readyFrom);
     }
@@ -7682,7 +7635,7 @@ void Frame() {
         }
     }
     if (g.loaded) HoldPhone();
-    phone_model::SetHand(g.holding && !g.phoneAtEar && g.loaded && PhoneWeaponType() <= 0, config::Get().handTurn,
+    phone_model::SetHand(g.holding && !g.phoneAtEar && g.loaded, config::Get().handTurn,
                          config::Get().handOffset, config::Get().handFlip);
     // Neither in the hand nor at the ear: model 330 is the game's again.
     if (!g.holding && !g.phoneAtEar) phone_model::Use(false);
@@ -8449,7 +8402,7 @@ void Draw() {
     g.drawnSinceUp = true;
     // The phone in CJ's left hand, into the game's own picture before
     // anything of the phone's is drawn over it.
-    if (g.holding && !g.phoneAtEar && g.loaded && PhoneWeaponType() <= 0) {
+    if (g.holding && !g.phoneAtEar && g.loaded) {
         phone_model::RenderInLeftHand(PlayerPed(), config::Get().handTurn, config::Get().handOffset,
                                       config::Get().handFlip);
     }

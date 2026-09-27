@@ -138,6 +138,12 @@ uintptr_t& RwObject(uintptr_t info) { return *reinterpret_cast<uintptr_t*>(info 
 
 }  // namespace
 
+bool InMemory(int id) {
+    const uintptr_t array = *reinterpret_cast<const uintptr_t*>(kModelInfoArrayRef);
+    const uintptr_t info = array ? reinterpret_cast<const uintptr_t*>(array)[id] : 0;
+    return info && RwObject(info);
+}
+
 bool Load(const std::string& dff, const std::string& txd) {
     if (GetFileAttributesA(dff.c_str()) == INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesA(txd.c_str()) == INVALID_FILE_ATTRIBUTES) {
@@ -340,14 +346,32 @@ bool DrawHand(uintptr_t ped, const float turn[3], const float offset[3], bool fl
 }
 
 // The game's weapon pass, and the phone after it.
+// Hides one atomic: rpATOMICRENDER (0x04) in its RwObject flags.
+uintptr_t __cdecl HideAtomic(uintptr_t atomic, void*) {
+    reinterpret_cast<uint8_t*>(atomic)[2] &= ~0x04;
+    return atomic;
+}
+
 void __cdecl WeaponPass() {
+    const uintptr_t ped = reinterpret_cast<uintptr_t(__cdecl*)(int)>(kFindPlayerPed)(-1);
+    // While the phone is in his hand, the only weapon object he can have is
+    // the phone as a weapon, which the game would draw in his right hand
+    // (every weapon goes there). Its atomics are switched off wherever the
+    // game draws them, and the phone is drawn in his left hand below.
+    // (CPed::m_pWeaponObject: an RpAtomic, type 1, or an RpClump, type 2.)
+    if (g_draw.on && ped) {
+        if (const uintptr_t object = *reinterpret_cast<const uintptr_t*>(ped + 0x4F4)) {
+            const uint8_t type = *reinterpret_cast<const uint8_t*>(object);
+            if (type == 1) HideAtomic(object, nullptr);
+            else if (type == 2)
+                reinterpret_cast<uintptr_t(__cdecl*)(uintptr_t, void*, void*)>(kRpClumpForAllAtomics)(
+                    object, reinterpret_cast<void*>(&HideAtomic), nullptr);
+        }
+    }
     reinterpret_cast<void(__cdecl*)()>(kRenderWeaponPedsForPC)();
     // Not in the mirror render (CMirrors::bRenderingReflection): that is the
     // Camera app's lens, which is in the phone and does not see it.
-    if (g_draw.on && !*reinterpret_cast<const bool*>(0xC7C728)) {
-        const uintptr_t ped = reinterpret_cast<uintptr_t(__cdecl*)(int)>(kFindPlayerPed)(-1);
-        DrawHand(ped, g_draw.turn, g_draw.offset, g_draw.flip);
-    }
+    if (g_draw.on && !*reinterpret_cast<const bool*>(0xC7C728)) DrawHand(ped, g_draw.turn, g_draw.offset, g_draw.flip);
 }
 
 }  // namespace

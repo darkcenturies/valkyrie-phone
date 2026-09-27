@@ -54,12 +54,6 @@ const Section kSections[] = {
      "; Shattered Memories, black with three keys ringed in teal under a menu of\r\n"
      "; tiles. [Look]'s colours left as they ship take the skin's own.\r\n"
      "Skin=iFruit\r\n"
-     "; The picture in the HUD's weapon slot while the phone is out: Auto (Project\r\n"
-     "; Eagle's star-badge style under Eagle, the plain one elsewhere), Detailed\r\n"
-     "; (the badge style with the phone's screen drawn in), or one of the phone's\r\n"
-     "; own pictures: weapon_phone_eagle, weapon_phone_eagle_detailed,\r\n"
-     "; weapon_phone, app_phone.\r\n"
-     "WeaponIcon=Auto\r\n"
      "; How strongly its display shows its pixels' red, green and blue stripes, from\r\n"
      "; 0 (none) to 1.\r\n"
      "ScreenEffect=0.5\r\n"
@@ -483,16 +477,6 @@ void Load(const std::string& gameDir) {
     c.height = std::clamp(static_cast<float>(atof(Read(ini, "Phone", "Height", "0.78").c_str())), 0.4f, 0.95f);
     c.right = _stricmp(Read(ini, "Phone", "Side", "right").c_str(), "left") != 0;
     c.model = Read(ini, "Phone", "Model", c.model.c_str());
-    c.weaponIcon = Read(ini, "Phone", "WeaponIcon", c.weaponIcon.c_str());
-    // Auto: Project Eagle's own style of weapon icon under Eagle (its
-    // PECore.asi beside the game), the phone's own elsewhere. An older file
-    // naming weapon_phone gets the same.
-    if (_stricmp(c.weaponIcon.c_str(), "Auto") == 0 || c.weaponIcon == "weapon_phone") {
-        const bool eagle = GetFileAttributesA((gameDir + "PECore.asi").c_str()) != INVALID_FILE_ATTRIBUTES;
-        c.weaponIcon = eagle ? "weapon_phone_eagle" : "weapon_phone";
-    } else if (_stricmp(c.weaponIcon.c_str(), "Detailed") == 0) {
-        c.weaponIcon = "weapon_phone_eagle_detailed";
-    }
     c.modelTextures = Read(ini, "Phone", "ModelTextures", c.modelTextures.c_str());
     c.reflections = atoi(Read(ini, "Model", "Reflections", "1").c_str()) != 0;
     auto three = [&](const char* key, const char* fallback, float* out) {

@@ -1,8 +1,5 @@
 param(
-    [Parameter(Mandatory=$true)][string]$Output,
-    # The HUD's picture of it: the plain badge-style icon, or the detailed one
-    # with the screen drawn in.
-    [string]$Icon = "weapon_phone_eagle"
+    [Parameter(Mandatory=$true)][string]$Output
 )
 # The phone as a weapon of its own, as a modloader folder, laid out the way
 # modloader adds to a game rather than replaces it:
@@ -23,7 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $phone = Join-Path $root "valkyrie-phone"
-$modelId = 199500      # the top of fastman92's model ID range, which nothing uses
+$modelId = 23900       # free under the model ID limit Project Eagle sets (24000); above it the game crashes
 $name = "valkyriephone"
 
 if (Test-Path -LiteralPath $Output) { Remove-Item -Recurse -Force -LiteralPath $Output }
@@ -31,12 +28,12 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Output "data") | Out-Null
 Copy-Item -LiteralPath (Join-Path $phone "assets\model\valkyrie-phone-model.dff") -Destination (Join-Path $Output "$name.dff") -Force
 
 # The model's textures, and the HUD icon as <model>icon - where the game's
-# HUD looks for a weapon's icon.
+# HUD looks for a weapon's icon (Atmosphere's phone icon).
 $stage = Join-Path ([IO.Path]::GetTempPath()) "valkyrie-phone-weapon-txd"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Path $stage | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $phone "assets\model\textures") -Filter *.png | Copy-Item -Destination $stage
-Copy-Item -LiteralPath (Join-Path $phone "assets\generated\$Icon.png") -Destination (Join-Path $stage "${name}icon.png")
+Copy-Item -LiteralPath (Join-Path $phone "assets\weapon-icon\phone.png") -Destination (Join-Path $stage "${name}icon.png")
 & (Join-Path $root "tools\pack-phone-txd.ps1") -Source $stage -Output (Join-Path $Output "$name.txd") | Out-Null
 Remove-Item -Recurse -Force $stage
 
@@ -67,12 +64,20 @@ $pound = [char]0xA3
     "IDE DATA\VALKYRIE-PHONE.IDE",
     "$pound VALKYRIEPHONE            MELEE 10.0  1.6  $modelId -1  12 FLOWERS        1  1    null",
     "",
-    "It needs fastman92's limit adjuster with its weapon type loader on",
-    "(Project Eagle has both), and one line added by hand at the very end of",
-    "data\gtasa_weapon_config.dat. 500 is its weapon ID; if another line",
-    "already uses 500, any free number below the loader's limit works too:",
+    "It needs fastman92's limit adjuster with its weapon type loader on.",
+    "Project Eagle ships it off: add these lines to the end of",
+    "fastman92limitAdjuster_GTASA.ini -",
     "",
-    "500   VALKYRIEPHONE      -1   1   0   1   97   194   247   1.0   FLOWERS",
+    "[WEAPON LIMITS]",
+    "Enable weapon type loader = 1",
+    "Weapon type loader, number of type IDs = 80",
+    "",
+    "- and put fastman92's stock data\gtasa_weapon_config.dat in the game's",
+    "data folder with one line added by hand at the very end of it.",
+    "70 is its weapon ID; if another line",
+    "already uses 70, any free number below the loader's limit works too:",
+    "",
+    "70    VALKYRIEPHONE      -1   1   0   1   97   194   247   1.0   FLOWERS",
     "",
     "Without that line the game does not know the weapon, and the phone works",
     "as it does without this folder: P takes it out."), $latin1)

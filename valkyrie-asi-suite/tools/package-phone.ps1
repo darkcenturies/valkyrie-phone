@@ -111,32 +111,20 @@ foreach ($e in $editions) {
         Copy-Item -LiteralPath (Join-Path $root "tools\build-phone-map.ps1") -Destination $dir
     }
 
-    # The weapon folder, set apart, with the detailed icon as its own option.
+    # The weapon folder, set apart.
     $optional = Join-Path $dir "Optional - phone as a weapon"
     & (Join-Path $root "tools\make-phone-weapon.ps1") -Output (Join-Path $optional "Valkyrie Phone") | Out-Null
-    $detailedDir = Join-Path $optional "Optional - detailed HUD icon"
-    $stage = Join-Path ([IO.Path]::GetTempPath()) "valkyrie-phone-detailed-icon"
-    & (Join-Path $root "tools\make-phone-weapon.ps1") -Output $stage -Icon "weapon_phone_eagle_detailed" | Out-Null
-    New-Item -ItemType Directory -Force -Path $detailedDir | Out-Null
-    Copy-Item -LiteralPath (Join-Path $stage "valkyriephone.txd") -Destination $detailedDir
-    Remove-Item -Recurse -Force $stage
-    Set-Content -LiteralPath (Join-Path $detailedDir "README.txt") -Encoding ASCII -Value @(
-        "THE DETAILED HUD ICON - OPTIONAL",
-        "",
-        "The phone's HUD weapon icon with its screen drawn in, instead of the plain",
-        "one. Copy this valkyriephone.txd over the one in 'Valkyrie Phone', and set",
-        "WeaponIcon=Detailed in valkyrie-phone.ini.")
     Set-Content -LiteralPath (Join-Path $optional "README.txt") -Encoding ASCII -Value @(
         "THE PHONE AS A WEAPON - OPTIONAL",
         "",
         "This gives the phone a weapon slot of its own (scroll to it like any",
         "weapon). It needs modloader and fastman92's limit adjuster with its weapon",
-        "type loader - Project Eagle has both. It takes two steps, and both are",
-        "needed:",
+        "type loader switched on - Project Eagle ships it off. It takes two steps,",
+        "and both are needed:",
         "",
         "1. Put the 'Valkyrie Phone' folder in the game's modloader folder.",
-        "2. Add the line in 'Valkyrie Phone\Valkyrie Phone.txt' to the very end",
-        "   of data\gtasa_weapon_config.dat.",
+        "2. Do what 'Valkyrie Phone\Valkyrie Phone.txt' says: switch the weapon",
+        "   type loader on and add the phone's line to data\gtasa_weapon_config.dat.",
         "",
         "Never do step 1 without step 2: the game would take the phone for CJ's",
         "fists. To take it out again, undo both.")
