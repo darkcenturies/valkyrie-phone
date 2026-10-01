@@ -1,4 +1,4 @@
-// The SP-RP phone for single-player Project Eagle, as the 2007 handset.
+// The SP-RP phone for single-player GTA SA, as the 2007 handset.
 //
 // Like fuel, this is the server's system rewritten against the game itself:
 // it needs no server and looks for none. In multiplayer the server already

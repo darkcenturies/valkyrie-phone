@@ -65,10 +65,9 @@ struct Config {
     bool handFlip = true;  // turned half round so the screen faces CJ
     bool model3d = true;   // the phone on screen drawn as its 3D model, ringed in ink
     float screenEffect = 0.5f;  // how strongly the 3D phone's display shows its LCD pixels
-    // [Phone] Skin: the iFruit as it ships, or Harry's phone from Silent Hill:
-    // Shattered Memories - black, three keys ringed in teal, a menu of tiles.
-    bool shattered = false;
-    bool silentHill = false;  // [Phone] Profile=SilentHill: content and render integration
+    // [Phone] Skin: the iFruit as it ships, or Valkyrie's keypad handset:
+    // Keypad - black, three keys ringed in teal, a menu of tiles.
+    bool keypad = false;
 
     // [Look]: the phone's colours, as 0xAARRGGBB.
     struct Look {

@@ -135,7 +135,7 @@ if "icon" in sys.argv[sys.argv.index("--") + 1:]:
     os._exit(0)
 
 # "-- <out.png> pe-icon": the shape and shading only, for a HUD icon in
-# Project Eagle's style (make-pe-weapon-icon.py colours it): every part a
+# A flat preview: every part a
 # plain light grey, the screen and the home button darker so it still reads
 # as the phone, lit from the top right, on a clear background, leaning into
 # the top right as the game's own phones do.

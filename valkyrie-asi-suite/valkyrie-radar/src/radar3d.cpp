@@ -1,7 +1,6 @@
 #include "radar3d.h"
 #include "game.h"
 #include "log.h"
-#include "pe_hud_bridge.h"
 #include "radarbox.h"
 #include "radarcfg.h"
 #include "radar_logo.h"
@@ -4014,7 +4013,6 @@ HRESULT STDMETHODCALLTYPE OnPresent(IDirect3DDevice9 *d, const RECT *src,
     if (d == *(IDirect3DDevice9 **)kMainDevice) MakeIso();
     return g_originalPresent(d, src, dst, wnd, dirty);
   }
-  pe_hud_bridge::Poll();
   // Deliberately no longer refreshes the capture - DrawBackground does that
   // now, from GTA's own radar draw. Driving it from here was what left the
   // capture frozen at the world origin, and feeding Update radar values
@@ -4518,7 +4516,7 @@ static void ApplyGpsRoute(const float* points, int count) {
     // of those landed here and reset g_routeGeom. That tore down a perfectly
     // good ribbon, raised the loading spinner, forced an immediate local
     // reroute - and, because SprpRadar3DHasGpsRoute went false for that
-    // window, let PECore's flat 2D route flash back onto the panel
+    // window, let another ASI's flat 2D route flash back onto the panel
     // (game.cpp only suppresses it while we say we have one). Nothing about
     // the destination had changed; that is the whole periodic flicker.
     //
@@ -4668,12 +4666,12 @@ static void ApplyMissionRoute(const float* points, int count) {
 }
 
 // Whether this display is handling navigation. game.cpp asks before it
-// suppresses PECore's flat 2D route: with nothing to put in its place,
+// suppresses another ASI's flat 2D route: with nothing to put in its place,
 // suppressing it would leave the player with no route at all.
 //
 // An active destination counts even while the ribbon for it is still being
 // worked out. Answering strictly on whether geometry exists meant that every
-// gap - a new destination, a reroute - un-suppressed PECore's flat route for a
+// gap - a new destination, a reroute - un-suppressed another ASI's flat route for a
 // few frames, so the old-style line flashed across the panel before ours
 // appeared. The panel already says what is happening during that gap: it dims
 // and shows the loading dots. Letting the flat route punch through it as well

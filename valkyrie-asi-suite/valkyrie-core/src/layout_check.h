@@ -10,7 +10,7 @@ inline bool Bytes(uintptr_t address,const unsigned char* expected,size_t size) {
 }
 // Entry fingerprints identify packers, not all compatible 1.0 layouts.
 // Unknown fingerprints need independent code anchors. Never authorize a
-// different layout merely because it has mapped memory or is named gta_pe.exe.
+// different layout merely because it has mapped memory or is named gta_sa.exe.
 inline bool Compatible10() {
     if(reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr))!=0x400000)return false;
     const unsigned char find[]={0x8B,0x44,0x24,0x04,0x85,0xC0,0x7D,0x07,0x0F,0xB6,0x05,0x74};

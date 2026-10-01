@@ -39,7 +39,7 @@ std::atomic<bool> g_settled{false};
 // are visibly using the same number.
 constexpr float kSnap = 60.f;
 
-int LoadEmbeddedGraph(sprp_ai::VehGraph& graph, bool projectEagle) {
+int LoadEmbeddedGraph(sprp_ai::VehGraph& graph) {
   HMODULE self{};
   if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -51,20 +51,19 @@ int LoadEmbeddedGraph(sprp_ai::VehGraph& graph, bool projectEagle) {
   constexpr char magic2[8] = {'V','K','R','G','R','P','H','2'};
   constexpr char magic1[8] = {'V','K','R','G','R','P','H','1'};
   if (total < 12) return -1;
-  // Universal payload: [stock graph][Project Eagle graph][magic][sizes].
+  // Universal payload: [stock graph][legacy secondary graph][magic][sizes].
   if (total >= 16) {
     file.seekg(total - 16);
     char found[8]{};
-    uint32_t stockSize = 0, eagleSize = 0;
+    uint32_t stockSize = 0, secondarySize = 0;
     file.read(found, 8);
     file.read(reinterpret_cast<char*>(&stockSize), 4);
-    file.read(reinterpret_cast<char*>(&eagleSize), 4);
-    const uint64_t payload = static_cast<uint64_t>(stockSize) + eagleSize;
-    if (file && std::memcmp(found, magic2, 8) == 0 && stockSize && eagleSize &&
+    file.read(reinterpret_cast<char*>(&secondarySize), 4);
+    const uint64_t payload = static_cast<uint64_t>(stockSize) + secondarySize;
+    if (file && std::memcmp(found, magic2, 8) == 0 && stockSize && secondarySize &&
         payload <= static_cast<uint64_t>(total - 16)) {
-      const uint32_t size = projectEagle ? eagleSize : stockSize;
-      const std::streamoff offset = total - 16 - static_cast<std::streamoff>(payload) +
-                                    (projectEagle ? stockSize : 0);
+      const uint32_t size = stockSize;
+      const std::streamoff offset = total - 16 - static_cast<std::streamoff>(payload);
       std::vector<uint8_t> bytes(size);
       file.seekg(offset);
       file.read(reinterpret_cast<char*>(bytes.data()), size);
@@ -95,11 +94,10 @@ void Init(const std::string &gameDir) {
   const std::string branded = gameDir + "Valkyrie-roadgraph.bin";
   const std::string legacy = gameDir + "sprp-vehgraph.bin";
   try {
-  const bool projectEagle = GetFileAttributesA((gameDir + "PECore.asi").c_str()) != INVALID_FILE_ATTRIBUTES;
-  std::thread([branded, legacy, projectEagle] {
+  std::thread([branded, legacy] {
     try {
     sprp_ai::VehGraph graph;
-    int nodes = LoadEmbeddedGraph(graph, projectEagle);
+    int nodes = LoadEmbeddedGraph(graph);
     std::string path = nodes > 0 ? "embedded in valkyrie-radar.asi" : branded;
     if (nodes <= 0) {
       graph = sprp_ai::VehGraph{};

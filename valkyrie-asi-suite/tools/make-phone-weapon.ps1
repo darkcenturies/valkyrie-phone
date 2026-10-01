@@ -5,7 +5,7 @@ param(
 # modloader adds to a game rather than replaces it:
 #
 # - its model and textures, with the HUD's icon among them (modloader - or
-#   Project Eagle's Modloader_Patch - streams them);
+#   a compatible streaming loader - streams them);
 # - its own object definitions, data\valkyrie-phone.ide, under a name of its
 #   own: an .ide named after one of the game's is taken as a whole copy of
 #   that file, and a copy with one line in it deletes all the others;
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $phone = Join-Path $root "valkyrie-phone"
-$modelId = 23900       # free under the model ID limit Project Eagle sets (24000); above it the game crashes
+$modelId = 23900       # free under the model ID limit GTA San Andreas sets (24000); above it the game crashes
 $name = "valkyriephone"
 
 if (Test-Path -LiteralPath $Output) { Remove-Item -Recurse -Force -LiteralPath $Output }
@@ -65,7 +65,7 @@ $pound = [char]0xA3
     "$pound VALKYRIEPHONE            MELEE 10.0  1.6  $modelId -1  12 FLOWERS        1  1    null",
     "",
     "It needs fastman92's limit adjuster with its weapon type loader on.",
-    "Project Eagle ships it off: add these lines to the end of",
+    "If it is disabled in your installation, add these lines to the end of",
     "fastman92limitAdjuster_GTASA.ini -",
     "",
     "[WEAPON LIMITS]",

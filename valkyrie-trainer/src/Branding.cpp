@@ -26,9 +26,7 @@ struct Brand {
 Brand brands[]={
     {"Valkyrie","valkyrie.png","https://ko-fi.com/valkyriesamp",22,22},
     {"SP-RP","sprp.png","https://sp-rp.com/",58,20},
-    {"Project Eagle","project-eagle.png","https://www.projecteaglemod.games/",24,24},
     {"Stars & Stripes Multiplayer","ssmp.png","",27,24},
-    {"Project Silent Hill","project-silent-hill.png","https://discord.gg/WRthyZNdWS",30,27}
 };
 IDirect3DDevice9* device=nullptr;
 std::string directory;
@@ -120,7 +118,7 @@ void Info(){
         }
         TrainerUI::Separator();
         TrainerUI::Heading("elsewhere",26);
-        for(int i=0;i<5;++i){
+        for(int i=0;i<static_cast<int>(sizeof brands / sizeof brands[0]);++i){
             auto& b=brands[i];ImGui::PushID(4500+i);
             auto p=ImGui::GetCursorScreenPos();float w=ImGui::GetContentRegionAvail().x;
             bool clicked=ImGui::Selectable("##project",false,0,{w,36});bool hover=ImGui::IsItemHovered();auto* d=ImGui::GetWindowDrawList();
