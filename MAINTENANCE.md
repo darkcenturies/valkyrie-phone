@@ -14,8 +14,9 @@ sync tool refuses to overwrite independent changes.
 Other homes:
 
 - `darkcenturies/valkyrie-workshop`: shared development, Atmosphere and private mods.
-- `darkcenturies/sp-rp-public-research`: public Doctor, Crashfix, Repair, earlier
-  Map and research; its release scope does not expand with a phone change.
+- `darkcenturies/gta-workshop`: public mod-making guides, findings, catalogs and
+  generated research; it contains no mod/tool implementation or releases.
+- Doctor/Crashfix, Map and Repair implementation remains private in Workshop.
 The old signal-coverage study branch is retained for research and is not the
 release source. Start maintenance from current main; do not merge older study
 branches wholesale over newer features.
