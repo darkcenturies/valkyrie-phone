@@ -46,24 +46,11 @@ already gives every player its own phone.
 | Volume buttons (left edge) | The phone's own tones louder or quieter, ten steps; at the bottom they are off. |
 | Ring switch (left edge, above the volume) | Silent: key clicks and text sounds are held back and the phone buzzes instead. The alarm still rings. |
 
-## Shattered Memories skin
+## Keypad skin
 
-Set `Skin=ShatteredMemories` under `[Phone]` in `valkyrie-phone.ini` and restart
-the game. The Project Silent Hill package selects it by default; other editions
-keep `Skin=iFruit`. The skin includes a black handset with teal keys, a paged
-3-by-3 app menu, lime status indicators, and matching lock screen, boot animation,
-buttons and 3D model textures. Custom `[Look]` colours still apply.
+Set `Skin=Keypad` in `[Phone]` for the optional Valkyrie keypad handset.
+The default remains iFruit. Both use GTA San Andreas contacts and services.
 
-Click a tile to open it, or hover it and press Select or the handset's A key.
-Scroll or use the edge arrows to change pages. A also wakes or unlocks the
-phone. Minus goes back, cancels an editor, ends a call or leaves a game; at
-an app root it returns to the menu. The centre pad remains the Home button.
-Off on the menu sleeps and locks the phone; the side power button still works.
-Wallpaper selection is hidden while this skin uses its own background.
-
-Regenerate its assets with `python tools/generate-sm-art.py` from this folder
-(Pillow and NumPy required). Both skins and model texture dictionaries are
-embedded by the normal phone build.
 
 ## Motion
 
@@ -456,26 +443,7 @@ The phone added three modules to `valkyrie-core`, which any plugin can use:
   cursor driven by the game's own `CPad::UpdateMouse`, and typed keys through
   the window procedure, while the game sees a still mouse and no key presses.
 
-## Project Silent Hill profile
+## GTA San Andreas content
 
-`[Phone] Profile=SilentHill` selects Harry Mason's phone content and the
-compatible scene capture renderer. Apply the complete preset with
-`python tools/configure-silent-hill-phone.py <game>/valkyrie-phone.ini --atmosphere <game>/valkyrie-atmosphere.ini`
-from the suite folder. The script backs up existing INIs and preserves unrelated
-settings. The installed Atmosphere must include the `ValkyriePhoneOpen` integration.
-
-The preset has nine tools: phone book, calls, pictures, map, messages, camera,
-settings, journal and flashlight. Its separate `[SilentHillContacts]` contains
-Home (Cheryl), Cybil, Michelle and Dahlia, using the Shattered Memories numbers
-listed at https://www.silenthillmemories.net/sh_shattered_memories/phone_numbers_en.htm.
-There are no scripted character conversations or imported voice clips. The
-network is unreachable; GTA dispatch, restaurants, save dialing and trainer
-dialing are disabled. Silent Hill saves its own contacts, notes and settings in
-`valkyrie-phone-silent-hill.dat`, leaving the original phone data intact.
-
-The camera uses the completed game view, preserving PSH post effects. During
-camera use the main view follows the lens. Reflections reuse that finished view
-as an approximation of reflected scenery; they do not render unseen scenery
-behind the player. Subtle scratches and glass highlights remain enabled. The
-flashlight emitter uses the same transformed rear-lens position as the held
-model; its ground illumination still uses San Andreas' projected-light system.
+The phone uses Carl Johnson's contacts, services and stock signal grid.
+`Skin=Keypad` selects the optional keypad appearance; iFruit is the default.

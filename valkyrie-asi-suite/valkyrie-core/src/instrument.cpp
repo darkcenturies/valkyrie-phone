@@ -350,7 +350,7 @@ void ReportOwnership(const Subject* subjects, size_t count) {
 
         // A detour is a jump planted over the first bytes. Following it and
         // naming the module it lands in is what turns "my hook never runs"
-        // into "PECore owns this function".
+        // into "another ASI owns this function".
         const void* destination = nullptr;
         const int disk = DiskMatch(subject.address, 6);
         const char* kind = disk == 1 ? "matches file" :

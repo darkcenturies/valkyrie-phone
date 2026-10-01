@@ -2,8 +2,8 @@
 //
 // tools/signal-coverage works out, for every 100 x 100 cell of the world,
 // how much of a 900 MHz signal is lost on its way from the nearest masts
-// (Okumura-Hata path loss and the hills in between), for Project Eagle's
-// eight masts and for San Andreas' own three. The phone carries that as
+// (Okumura-Hata path loss and the hills in between), for GTA SA's
+// three masts. The phone carries that as
 // valkyrie-signal.bin and reads where CJ is standing from it: less indoors
 // and in a car, more high up, none under water, drifting a little as a real
 // signal does. The bars, the browser's speed and whether a call gets
@@ -14,10 +14,10 @@
 
 namespace coverage {
 
-// Read the grids from valkyrie-signal.bin: Project Eagle's when `eagle`,
-// San Andreas' own otherwise. False when there is none (the signal is then
+// Read the stock San Andreas grid from valkyrie-signal.bin.
+// False when there is none (the signal is then
 // always full).
-bool Load(const std::string& path, bool eagle);
+bool Load(const std::string& path);
 
 // A frame on: where CJ is now. `enabled` is [Features] Signal.
 void Update(bool enabled);

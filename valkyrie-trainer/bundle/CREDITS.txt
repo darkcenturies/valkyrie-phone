@@ -14,6 +14,4 @@ Bundled code license notices are in licenses/.
 
 Elsewhere
 SP-RP: https://sp-rp.com/
-Project Eagle: https://www.projecteaglemod.games/
 Stars & Stripes Multiplayer
-Project Silent Hill: https://discord.gg/WRthyZNdWS

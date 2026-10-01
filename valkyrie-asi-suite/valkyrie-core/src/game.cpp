@@ -63,7 +63,7 @@ constexpr uintptr_t kMapBaseY = kMenuManager + 0x6C;
 constexpr uintptr_t kCurrentMenuPage = kMenuManager + 0x15D;
 
 // CRadar's live range and origin. Fastman's 48,000-unit map patch changes the
-// range from the stock 2990 to Project Eagle's 23920. The frontend map is never
+// range from the stock 2990 to an expanded-map value of 23920. The frontend map is never
 // rotated, so using these values directly avoids the driving radar's cached
 // heading that CRadar::TransformRealWorldPointToRadarSpace would apply here.
 constexpr uintptr_t kRadarRange = 0xBA8314;
@@ -135,7 +135,7 @@ constexpr size_t kLimitRadarPointPrologue = 5;
 // would make the pause-map fallback execute invalid machine code.
 constexpr size_t kTransformRadarPointToScreenPrologue = 9;
 // `mov al,[0xBA67A1]` is the opening instruction of
-// TransformRadarPointToScreenSpace in this Project Eagle executable. This is
+// TransformRadarPointToScreenSpace in this GTA SA executable. This is
 // the frontend-map flag; using the nearby menu-manager field at 0xBA6767 made
 // the validated stock transform look modified and left the 3D HUD inactive.
 constexpr uintptr_t kDrawingMap = 0xBA67A1;
@@ -182,30 +182,6 @@ constexpr uintptr_t kRadarDiscDrawCalls[] = {
 // The game's live IDirect3DDevice9*, the same one Valkyrie Radar composites
 // through.
 constexpr uintptr_t kMainD3DDevice = 0xC97C28;
-
-// PECore.asi's Gps::RenderRoute in the Project Eagle build we ship. It draws
-// the green in-car route from the normal map waypoint. The PECore config clip
-// is intentionally one-size square, so it cannot describe radarbox.h's wide
-// HUD rectangle. These are PECore RVAs, never absolute process addresses.
-constexpr char kPeCoreModuleName[] = "PECore.asi";
-constexpr uintptr_t kPeCoreGpsRenderRouteRva = 0x000D2C50;
-constexpr uintptr_t kPeCoreGpsScissorEnabledRva = 0x0026F00E;
-constexpr size_t kPeCoreGpsRenderRoutePrologue = 5;
-
-// PECore's own distance readout, and how it is silenced.
-//
-// It draws the remaining distance as "1.9 km" across the top of the panel -
-// wrong units for us, far too large, and positioned so it overhangs the panel
-// edge. Suppressing Gps::RenderRoute does not stop it, because the text is not
-// drawn there.
-//
-// Rather than reverse out whichever routine does draw it, the two printf
-// formats it builds the string from are blanked. PECore then formats an empty
-// string and draws nothing, which costs one byte each and no per-frame work.
-// Found by searching PECore.asi for the format literals; they sit together in
-// .rdata beside its route-calculation logging.
-constexpr uintptr_t kPeCoreDistFormatKmRva = 0x001A7194; // "%.1f km"
-constexpr uintptr_t kPeCoreDistFormatMRva  = 0x001A719C; // "%.0f m"
 
 // CTxdStore / CSprite2d, GTA SA 1.0 US. These are the same plugin-sdk entry
 // points used by the game's own frontend texture loader.
@@ -267,7 +243,7 @@ constexpr uintptr_t kMenuDrawCallSite = 0x53EB8C;
 // Hooking the FLUSH and drawing after it is what makes an overlay independent
 // of that: by then the buffer is empty, so our font state and our flush are
 // only ever our own.
-// Verified in the shipped gta_pe.exe and archived 1.0 US disassembly.
+// Verified in the shipped gta_sa.exe and archived 1.0 US disassembly.
 // Render2dStuff ends at 0x53E52B; 0x53E55F is not the live Idle path.
 constexpr uintptr_t kHudAfterFadeCallSite = 0x53EBB1;
 constexpr uintptr_t kFontDrawFontsTarget = 0x71A210;
@@ -970,8 +946,8 @@ void DrawRouteDistance();
 
 // Scan the radar blip table for an active GPS waypoint blip and write it to
 // the 3D radar, which renders a flat ribbon in its perspective scene instead
-// of PECore's 2D overlay. Returns true if the waypoint was found and fed to
-// the 3D radar (caller should suppress PECore's own route draw).
+// of another ASI's 2D overlay. Returns true if the waypoint was found and fed to
+// the 3D radar (caller should suppress another ASI's own route draw).
 // Whether the 3D radar holds a server-sent GPS route it can draw itself.
 //
 // This replaced a scan of the game's radar trace array. That scan could never
@@ -1650,66 +1626,6 @@ DWORD g_savedScissorEnable = 0;
 RECT g_savedScissor{};
 bool g_scissorHeld = false;
 bool RadarBoxPixels(RECT& out);
-using PeCoreGpsRenderRouteFn = void(__cdecl*)();
-PeCoreGpsRenderRouteFn g_originalPeCoreGpsRenderRoute = nullptr;
-bool* g_peCoreGpsScissorEnabled = nullptr;
-
-bool ValkyrieRadarOwnsNavigation() {
-    using HasRouteFn = BOOL(__cdecl*)();
-    static HasRouteFn hasRoute = nullptr;
-    if (!hasRoute) {
-        if (HMODULE module = ValkyrieRadarModule()) {
-            hasRoute = reinterpret_cast<HasRouteFn>(
-                GetProcAddress(module, "SprpRadar3DOwnsNavigation"));
-            if (!hasRoute) hasRoute = reinterpret_cast<HasRouteFn>(
-                GetProcAddress(module, "SprpRadar3DHasGpsRoute"));
-        }
-    }
-    return hasRoute && hasRoute() != FALSE;
-}
-
-void __cdecl PeCoreGpsRenderRouteReplacement() {
-    // The active 3D panel owns navigation even when its graph is missing or
-    // a route is pending. PECore's flat geometry uses incompatible coordinates
-    // and must never be drawn over the perspective scene.
-    if (!MenuIsOpen() && g_radarBoxHudActive && ValkyrieRadarOwnsNavigation()) {
-        return;
-    }
-
-    // Scope this state change to PECore's route draw. It must not escape to
-    // the game, the pause map, or another ASI's render callback.
-    const bool hadLegacyClip = g_peCoreGpsScissorEnabled && *g_peCoreGpsScissorEnabled;
-    if (g_peCoreGpsScissorEnabled) {
-        *g_peCoreGpsScissorEnabled = false;
-    }
-
-    auto* device = *reinterpret_cast<IDirect3DDevice9**>(kMainD3DDevice);
-    RECT box{};
-    DWORD previousEnable = 0;
-    RECT previousRect{};
-    bool held = false;
-    if (device && !MenuIsOpen() && RadarBoxPixels(box)) {
-        device->GetRenderState(D3DRS_SCISSORTESTENABLE, &previousEnable);
-        device->GetScissorRect(&previousRect);
-        if (SUCCEEDED(device->SetScissorRect(&box))) {
-            device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-            held = true;
-        }
-    }
-
-    if (g_originalPeCoreGpsRenderRoute) {
-        g_originalPeCoreGpsRenderRoute();
-    }
-
-    if (held && device) {
-        device->SetScissorRect(&previousRect);
-        device->SetRenderState(D3DRS_SCISSORTESTENABLE, previousEnable);
-    }
-    if (g_peCoreGpsScissorEnabled) {
-        *g_peCoreGpsScissorEnabled = hadLegacyClip;
-    }
-}
-
 void __cdecl DrawRadarMaskReplacement() {
     // Only the in-game HUD radar goes square. Anything drawn while a menu is
     // up - the pause map, the join-sequence map preview - keeps the mask it
@@ -1820,8 +1736,8 @@ void __cdecl DrawRadarMapReplacement() {
 // Calling it from inside the HUD draw is therefore exactly what the game does
 // with its own text, and it is the reason this one is safe where that was not.
 //
-// It replaces PECore's "1.9 km", which is silenced in
-// InstallProjectEagleGpsClipPatch.
+// It replaces another ASI's "1.9 km", which is silenced in
+// Native radar clip setup.
 void DrawRouteDistance() {
     using RemainingFn = float(__cdecl*)();
     static RemainingFn remaining = nullptr;
@@ -2823,7 +2739,7 @@ bool InstallRadar3DBackgroundPatch() {
 bool InstallRadarBoxTransformPatch() {
     if (!g_ready || g_originalTransformRadarPointToScreen) return g_ready;
     auto* site = reinterpret_cast<uint8_t*>(kTransformRadarPointToScreen);
-    // Project Eagle may already own this entry with a normal five-byte JMP.
+    // GTA SA may already own this entry with a normal five-byte JMP.
     // That is not a conflict: retain its destination as our pause-map path,
     // then put our gameplay-only transform in front of it. Rejecting a clean
     // chain here was what split the new 3D rectangle from the old marker ring.
@@ -2932,7 +2848,7 @@ bool InstallRadarBoxPerimeterPatch() {
 bool InstallDrivingBlipFilterPatch() {
     if (!g_ready || g_originalDisplayThisBlip) return g_ready;
     auto* site = reinterpret_cast<uint8_t*>(kDisplayThisBlip);
-    // Project Eagle owns the function already, so preserve its reveal and
+    // GTA SA owns the function already, so preserve its reveal and
     // priority logic for the two sprites we allow and chain in front of it.
     if (site[0] != 0xE9) {
         logfile::Line("radar: DisplayThisBlip is not chainable (%02X)", site[0]);
@@ -3155,7 +3071,7 @@ bool InstallBlipTintPatch() {
 
     auto* site = reinterpret_cast<uint8_t*>(kDrawCoordBlip);
     if (site[0] == 0xE9) {
-        // Somebody is already there - Project Eagle, or another ASI. Chain in
+        // Somebody is already there - GTA SA, or another ASI. Chain in
         // front of them and keep whatever they do.
         const int32_t oldRel = *reinterpret_cast<int32_t*>(site + 1);
         auto* previous = reinterpret_cast<DrawCoordBlipFn>(
@@ -3297,76 +3213,6 @@ bool InstallRadarMapScissorPatch() {
     }
     FlushInstructionCache(GetCurrentProcess(), site, kDrawRadarMapPrologue);
     g_originalDrawRadarMap = reinterpret_cast<DrawRadarMapFn>(trampoline);
-    return true;
-}
-
-bool InstallProjectEagleGpsClipPatch() {
-    if (!g_ready || g_originalPeCoreGpsRenderRoute) {
-        return g_ready;
-    }
-    const auto module = reinterpret_cast<uintptr_t>(GetModuleHandleA(kPeCoreModuleName));
-    if (!module) {
-        logfile::Line("gps: PECore.asi not loaded; retaining PECore's standalone square clip");
-        return false;
-    }
-    auto* site = reinterpret_cast<uint8_t*>(module + kPeCoreGpsRenderRouteRva);
-    const uint8_t expected[kPeCoreGpsRenderRoutePrologue] = {0x55, 0x8B, 0xEC, 0x6A, 0xFF};
-    if (!Executable(site) || memcmp(site, expected, sizeof(expected)) != 0) {
-        logfile::Line("gps: PECore route entry changed; retaining standalone clip");
-        return false;
-    }
-    auto* legacyFlag = reinterpret_cast<bool*>(module + kPeCoreGpsScissorEnabledRva);
-    MEMORY_BASIC_INFORMATION legacyFlagInfo{};
-    if (!VirtualQuery(legacyFlag, &legacyFlagInfo, sizeof(legacyFlagInfo)) ||
-        legacyFlagInfo.State != MEM_COMMIT ||
-        (legacyFlagInfo.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
-        logfile::Line("gps: PECore scissor state unavailable; retaining standalone clip");
-        return false;
-    }
-    auto* trampoline = static_cast<uint8_t*>(VirtualAlloc(
-        nullptr, kPeCoreGpsRenderRoutePrologue + 5,
-        MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-    if (!trampoline) return false;
-    memcpy(trampoline, site, kPeCoreGpsRenderRoutePrologue);
-    trampoline[kPeCoreGpsRenderRoutePrologue] = 0xE9;
-    *reinterpret_cast<int32_t*>(trampoline + kPeCoreGpsRenderRoutePrologue + 1) =
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(site) + kPeCoreGpsRenderRoutePrologue) -
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(trampoline) +
-                             kPeCoreGpsRenderRoutePrologue + 5);
-    const int32_t replacement =
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(&PeCoreGpsRenderRouteReplacement)) -
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(site) + 5);
-    if (!WithWritable(reinterpret_cast<uintptr_t>(site), kPeCoreGpsRenderRoutePrologue, [&] {
-            site[0] = 0xE9;
-            *reinterpret_cast<int32_t*>(site + 1) = replacement;
-        })) {
-        VirtualFree(trampoline, 0, MEM_RELEASE);
-        return false;
-    }
-    FlushInstructionCache(GetCurrentProcess(), site, kPeCoreGpsRenderRoutePrologue);
-    g_peCoreGpsScissorEnabled = legacyFlag;
-    g_originalPeCoreGpsRenderRoute = reinterpret_cast<PeCoreGpsRenderRouteFn>(trampoline);
-    logfile::Line("gps: PECore green route clipped to the shared 3D radar box");
-
-    // Silence PECore's own distance readout. See the RVA comments above: the
-    // text is not drawn from RenderRoute, so blanking the formats it builds
-    // the string from is what takes it off the panel. Verified before writing
-    // - if PECore ever moves, the bytes will not match and nothing is touched.
-    {
-        auto blank = [&](uintptr_t rva, const char* expect) {
-            char* p = reinterpret_cast<char*>(module + rva);
-            if (strncmp(p, expect, strlen(expect)) != 0) {
-                logfile::Line("gps: PECore distance format moved, leaving its "
-                              "readout alone (found \"%.12s\")", p);
-                return;
-            }
-            WithWritable(reinterpret_cast<uintptr_t>(p), 1, [&] { p[0] = '\0'; });
-        };
-        blank(kPeCoreDistFormatKmRva, "%.1f km");
-        blank(kPeCoreDistFormatMRva, "%.0f m");
-        logfile::Line("gps: PECore distance readout silenced; Valkyrie Radar draws "
-                      "the mileage instead");
-    }
     return true;
 }
 

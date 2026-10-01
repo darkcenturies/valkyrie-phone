@@ -16,18 +16,15 @@ Other homes:
 - `darkcenturies/valkyrie-workshop`: shared development, Atmosphere and private mods.
 - `darkcenturies/sp-rp-public-research`: public Doctor, Crashfix, Repair, earlier
   Map and research; its release scope does not expand with a phone change.
-- `FrankoU28/Project_Silent_Hill`: the PSH consumer integration and game-specific
-  assets. Its no-trainer build is not the general phone build.
-
 The old signal-coverage study branch is retained for research and is not the
 release source. Start maintenance from current main; do not merge older study
 branches wholesale over newer features.
 
-The Silent Hill work contributes an optional profile/skin, camera-control
-cleanup, a forward handset light and finished-scene capture. Standalone startup
+The phone retains camera-control cleanup, a forward handset light and
+finished-scene capture. Standalone startup
 now chains RenderWare initialization on the game thread; map initialization
 follows configuration without worker sleeps. GTA remains the default profile.
-No PSH map tiles or other game assets are imported here.
+No game assets are imported here.
 
 Build with `valkyrie-asi-suite/build.ps1`. The native startup regression test is
 `valkyrie-asi-suite/tools/test-game-startup.cpp` (MSVC x86, C++17, include

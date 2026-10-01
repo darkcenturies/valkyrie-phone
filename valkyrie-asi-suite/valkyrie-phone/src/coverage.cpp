@@ -65,7 +65,7 @@ int BarsFor(float level) {
 
 }  // namespace
 
-bool Load(const std::string& path, bool eagle) {
+bool Load(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     auto i32 = [&](size_t at) {
@@ -86,7 +86,7 @@ bool Load(const std::string& path, bool eagle) {
     const int count = i32(28);
     const size_t cells = static_cast<size_t>(g.w) * g.h;
     size_t at = 32;
-    const char* want = eagle ? "eagle" : "stock";
+    const char* want = "stock";
     for (int n = 0; n < count && at + 8 + cells <= b.size(); ++n, at += 8 + cells) {
         if (strncmp(reinterpret_cast<const char*>(&b[at]), want, 8) != 0) continue;
         g.loss.assign(b.begin() + at + 8, b.begin() + at + 8 + cells);

@@ -66,7 +66,7 @@ if ($Install -and [string]::IsNullOrWhiteSpace($game)) {
 }
 # The phone's version.
 $version = "0.2.1"
-$phoneVersion = "0.1.1-test"
+$phoneVersion = "0.2.1-test"
 
 # Visual Studio 2019 Build Tools. Found rather than hardcoded, because the
 # toolset version in the path changes with every update.
@@ -376,7 +376,7 @@ if ($Install) {
     if (-not (Test-Path $game)) {
         throw "No game folder at $game"
     }
-    $running = Get-Process gta_sa, gta_pe -ErrorAction SilentlyContinue
+    $running = Get-Process gta_sa -ErrorAction SilentlyContinue
     if ($running) {
         throw "Close the game before installing ($(($running.ProcessName | Sort-Object -Unique) -join ', ') is running)"
     }

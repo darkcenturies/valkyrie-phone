@@ -4,7 +4,7 @@
 namespace radar3d {
 
 // Waits for the game's graphics, then puts the radar in: its hooks, the
-// Project Eagle HUD bridge, the route. Run on a thread of its own, once; the
+// GTA SA HUD bridge, the route. Run on a thread of its own, once; the
 // route lock (radar3d::g_routeLock) must be made first.
 void Run();
 

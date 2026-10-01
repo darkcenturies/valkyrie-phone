@@ -1310,8 +1310,6 @@ def brands():
     fitted, whole, into a transparent square, so the plugin draws them
     square."""
     for name, file, size in (("brand_valkyrie", "valkyrie.png", 128), ("brand_sprp", "sprp.png", 128),
-                             ("brand_eagle", "project-eagle.png", 64),
-                             ("brand_silenthill", "project-silent-hill.png", 128),
                              ("brand_ssmp", "ssmp.png", 128)):
         src = Image.open(os.path.join(TRAINER_ASSETS, file)).convert("RGBA")
         f = size / max(src.size)

@@ -2,10 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Version,
     # Each edition's map, as a Valkyrie-radar-tiles folder. An edition whose
     # folder is not given is not made.
-    [string]$EagleTiles,
     [string]$GtaSaTiles,
-    [string]$PshTiles,
-    # Only these editions (script, gtasa, project-eagle, project-silent-hill).
+    # Only these editions (script, gtasa).
     [string[]]$Only
 )
 # The phone's release archives, from build\valkyrie-phone.asi:
@@ -13,13 +11,9 @@ param(
 #   valkyrie-phone-<version>-script.7z               the ASI, and the script that builds
 #                                                    the map from your own game
 #   valkyrie-phone-<version>-gtasa.7z                the ASI and GTA: San Andreas' map
-#   valkyrie-phone-<version>-project-eagle.7z        the ASI and Project Eagle's map
-#   valkyrie-phone-<version>-project-silent-hill.7z  the ASI and Project Silent Hill's
-#                                                    map (handed to that project, not public)
 #
 # Each has the ASI, the ini as the phone ships it, a README, and the
-# phone-as-a-weapon modloader folder set apart as optional, with the detailed
-# HUD icon as an option of its own. The weapon folder must not be installed
+# phone-as-a-weapon modloader folder set apart as optional. The weapon folder must not be installed
 # without its line in fastman92's weapon config.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -29,10 +23,8 @@ if (-not (Test-Path $asi)) { throw "no $asi - build the phone first" }
 $sevenZip = "C:\Program Files\7-Zip\7z.exe"
 
 $editions = @(
-    @{ Id = "script"; Title = "ANY INSTALL - BUILD THE MAP YOURSELF"; Tiles = $null; Game = "GTA: San Andreas, Project Eagle or Project Silent Hill"; Folder = "the one with gta_sa.exe or gta_pe.exe" },
-    @{ Id = "gtasa"; Title = "GTA: SAN ANDREAS"; Tiles = $GtaSaTiles; Game = "GTA: San Andreas"; Folder = "the one with gta_sa.exe" },
-    @{ Id = "project-eagle"; Title = "PROJECT EAGLE"; Tiles = $EagleTiles; Game = "Project Eagle"; Folder = "the one with gta_pe.exe" },
-    @{ Id = "project-silent-hill"; Title = "PROJECT SILENT HILL"; Tiles = $PshTiles; Game = "Project Silent Hill"; Folder = "the one with gta_sa.exe" }
+    @{ Id = "script"; Title = "ANY INSTALL - BUILD THE MAP YOURSELF"; Tiles = $null; Game = "GTA: San Andreas"; Folder = "the one with gta_sa.exe" },
+    @{ Id = "gtasa"; Title = "GTA: SAN ANDREAS"; Tiles = $GtaSaTiles; Game = "GTA: San Andreas"; Folder = "the one with gta_sa.exe" }
 )
 
 function Write-Readme($path, $e) {
@@ -77,7 +69,7 @@ function Write-Readme($path, $e) {
         "",
         "The 'Optional - phone as a weapon' folder gives the phone a weapon slot of",
         "its own. It needs modloader and fastman92's limit adjuster with its weapon",
-        "type loader (Project Eagle has both). Read the README in that folder: it",
+        "type loader (requires a compatible loader). Read the README in that folder: it",
         "takes two steps, and both are needed.",
         "",
         "IF SOMETHING GOES WRONG",
@@ -102,10 +94,6 @@ foreach ($e in $editions) {
 
     # The ini as the phone writes it.
     python (Join-Path $root "tools\phone-default-ini.py") (Join-Path $dir "valkyrie-phone.ini") | Out-Null
-    if ($e.Id -eq "project-silent-hill") {
-        python (Join-Path $root "tools\configure-silent-hill-phone.py") (Join-Path $dir "valkyrie-phone.ini") --no-backup
-        if ($LASTEXITCODE -ne 0) { throw "Silent Hill phone configuration failed" }
-    }
     Write-Readme (Join-Path $dir "README.txt") $e
     if ($e.Id -eq "script") {
         Copy-Item -LiteralPath (Join-Path $root "tools\build-phone-map.ps1") -Destination $dir
@@ -119,7 +107,7 @@ foreach ($e in $editions) {
         "",
         "This gives the phone a weapon slot of its own (scroll to it like any",
         "weapon). It needs modloader and fastman92's limit adjuster with its weapon",
-        "type loader switched on - Project Eagle ships it off. It takes two steps,",
+        "type loader switched on. It takes two steps,",
         "and both are needed:",
         "",
         "1. Put the 'Valkyrie Phone' folder in the game's modloader folder.",
