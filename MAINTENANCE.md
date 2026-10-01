@@ -14,9 +14,13 @@ sync tool refuses to overwrite independent changes.
 Other homes:
 
 - `darkcenturies/valkyrie-workshop`: shared development, Atmosphere and private mods.
-- `darkcenturies/gta-workshop`: public mod-making guides, findings, catalogs and
-  generated research; it contains no mod/tool implementation or releases.
-- Doctor/Crashfix, Map and Repair implementation remains private in Workshop.
+- `darkcenturies/gta-workshop`: public guides, findings, generated research and
+  source for the ten defined Valkyrie tool families under `tooling/`. Mod
+  implementation and mod releases remain outside that reference library.
+Mod implementations stay outside the public tooling repository.
+The content/signal scripts here remain compatible consumer copies of the
+published tool families. Review path/hash changes deliberately; do not replace
+Phone's build-specific scripts or assets with a bulk tooling export.
 The old signal-coverage study branch is retained for research and is not the
 release source. Start maintenance from current main; do not merge older study
 branches wholesale over newer features.
