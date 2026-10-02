@@ -5415,6 +5415,11 @@ void UpdatePose() {
         *reinterpret_cast<const uintptr_t*>(ped + 0x18), g_pose.anim.name, g_pose.association) : nullptr;
     const bool on = g_pose.playing && (ownClip ? ownAssociation != nullptr :
                                       script::Command(kPlayingAnim, {handle, g_pose.anim.name.c_str()}));
+    if (ownClip && g_pose.playing && g_pose.seen && !on) {
+        StopPose();
+        Lower(); // An interrupted entry/shutter/exit must not start the next pose.
+        return;
+    }
     if (on) {
         if (!g_pose.association) {
             const uintptr_t clump = *reinterpret_cast<const uintptr_t*>(ped + 0x18);
