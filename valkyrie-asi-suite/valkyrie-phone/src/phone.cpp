@@ -5154,7 +5154,7 @@ void UpdateCamera() {
     viewfinder::Update(!false && g.slide > 0.5f && config::Get().liveView);
 }
 
-// Completed-frame capture uses the completed main view, including its custom post effects.
+// Scene capture uses the completed main view before any 2D/HUD overlays.
 // It never changes the mirror camera or adds a second world render.
 IDirect3DTexture9* g_cameraPreview = nullptr;
 UINT g_cameraPreviewSize[2] = {};
@@ -6967,7 +6967,7 @@ IDirect3DTexture9* DeviceCopyOf(uintptr_t tex, const std::string& name) {
 
 IDirect3DTexture9* DeviceCopy(const char* name) { return DeviceCopyOf(ui::Tex(name), name); }
 
-// The completed game frame, captured before drawing the phone. No mirror
+// The completed world frame, captured before drawing any HUD. No mirror
 // camera or RenderWare texture bindings are changed. The caller releases it.
 IDirect3DTexture9* LiveMirror(IDirect3DDevice9* device) {
     if (device && !g.camera.on && config::Get().reflections && g_cameraPreviewReady && g_cameraPreview) {
@@ -7325,7 +7325,15 @@ void Configure(const std::string& gameDir) {
 }
 
 void BeforeFrame() {
+    // A skipped render pass must not reuse the previous frame's reflection.
+    g_cameraPreviewReady = false;
     if (g.loaded) CameraBeforeFrame();
+}
+
+void CaptureScene() {
+    g_cameraPreviewReady = false;
+    if (g.loaded && g.out && !g.camera.on && config::Get().reflections &&
+        !game::MenuIsOpen() && PlayerAble()) CaptureCameraPreview();
 }
 
 void BloodFrame();
@@ -8288,8 +8296,7 @@ void Draw() {
         if (g.focused) Lower();
         return;
     }
-    if (g.out && !g.camera.on && config::Get().reflections) CaptureCameraPreview();
-    else g_cameraPreviewReady = false;
+    if (!g.out || g.camera.on || !config::Get().reflections) g_cameraPreviewReady = false;
     g.drawnFrame = g.frame;
     g.drawnSinceUp = true;
     // The phone in CJ's left hand, into the game's own picture before

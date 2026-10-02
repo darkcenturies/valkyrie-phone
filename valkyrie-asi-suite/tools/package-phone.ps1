@@ -26,61 +26,6 @@ $editions = @(
     @{ Id = "gtasa"; Title = "GTA: SAN ANDREAS"; Tiles = $GtaSaTiles; Game = "GTA: San Andreas"; Folder = "the one with gta_sa.exe" }
 )
 
-function Write-Readme($path, $e) {
-    $script = $e.Id -eq "script"
-    $lines = @(
-        "VALKYRIE PHONE $Version - $($e.Title)",
-        "",
-        "A working 2007 phone for $($e.Game). Press P to take it out.",
-        "",
-        "INSTALL",
-        "",
-        "1. Close the game.",
-        "2. Copy valkyrie-phone.asi and valkyrie-phone.ini into the game folder",
-        "   ($($e.Folder)). You need an ASI loader, as for any ASI mod."
-    )
-    if ($script) {
-        $lines += @(
-            "3. For the Maps app, build the map from your own game (Python 3 needed):",
-            "     .\build-phone-map.ps1 -GamePath ""C:\path\to\the\game"" -Test",
-            "     .\build-phone-map.ps1 -GamePath ""C:\path\to\the\game""",
-            "   It writes the Valkyrie-radar-tiles folder into the game folder. It",
-            "   takes a while and needs several GB free. Without it the phone works",
-            "   and Maps shows no map.")
-    } else {
-        $lines += @(
-            "3. Copy the Valkyrie-radar-tiles folder there too: it is the map the",
-            "   Maps app draws. Without it the phone works and Maps shows no map.")
-    }
-    $lines += @(
-        "4. If valkyrie-trainer.asi is in the game folder, remove it: the phone",
-        "   carries the trainer (call Trainer in Contacts, or Alt+Z).",
-        "",
-        "USING IT",
-        "",
-        "P takes the phone out and puts it away. The mouse works the screen. With",
-        "the phone as a weapon (below), scroll to it like a gun: it sits lowered",
-        "at CJ's side, and right click brings it up and takes it down.",
-        "",
-        "Every setting is in valkyrie-phone.ini.",
-        "",
-        "OPTIONAL - THE PHONE AS A WEAPON",
-        "",
-        "The 'Optional - phone as a weapon' folder gives the phone a weapon slot of",
-        "its own. It requires Modloader 0.3.10 and fastman92 limit adjuster 7.6.",
-        "With those installed, copy the contents of 'Copy into game folder' into",
-        "the game folder, replacing the supplied configs. No editing on stock SA.",
-        "Back up existing configs; custom weapon/limit settings need to be retained.",
-        "",
-        "IF SOMETHING GOES WRONG",
-        "",
-        "Send valkyrie-phone.log and valkyrie-phone.previous.log from the game folder.",
-        "",
-        "The source: https://github.com/darkcenturies/valkyrie-phone"
-    )
-    Set-Content -LiteralPath $path -Encoding ASCII -Value $lines
-}
-
 $made = @()
 foreach ($e in $editions) {
     if ($Only -and $e.Id -notin $Only) { continue }
@@ -96,20 +41,15 @@ foreach ($e in $editions) {
 
     # The ini as the phone writes it.
     python (Join-Path $root "tools\phone-default-ini.py") (Join-Path $dir "valkyrie-phone.ini") | Out-Null
-    Write-Readme (Join-Path $dir "README.txt") $e
-    if ($e.Id -eq "script") {
-        Copy-Item -LiteralPath (Join-Path $root "tools\build-phone-map.ps1") -Destination $dir
-    }
-
     # Both editions carry the stock map and ready-to-copy optional weapon configs.
     # The script edition additionally retains the builder for custom maps.
     & (Join-Path $root 'tools/stage-phone-content.ps1') -Output $dir
     if ($e.Tiles) {
         # Linked, not copied: the same gigabytes on disk until they are packed.
-        Remove-Item -LiteralPath (Join-Path $dir 'Valkyrie-radar-tiles') -Recurse -Force
-        New-Item -ItemType Directory -Path (Join-Path $dir "Valkyrie-radar-tiles") | Out-Null
+        Remove-Item -LiteralPath (Join-Path $dir 'valkyrie-radar-tiles') -Recurse -Force
+        New-Item -ItemType Directory -Path (Join-Path $dir "valkyrie-radar-tiles") | Out-Null
         Get-ChildItem -LiteralPath $e.Tiles -File | ForEach-Object {
-            New-Item -ItemType HardLink -Path (Join-Path $dir "Valkyrie-radar-tiles\$($_.Name)") -Target $_.FullName | Out-Null
+            New-Item -ItemType HardLink -Path (Join-Path $dir "valkyrie-radar-tiles\$($_.Name)") -Target $_.FullName | Out-Null
         }
     }
 

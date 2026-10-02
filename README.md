@@ -1,9 +1,9 @@
-# Valkyrie Phone for GTA San Andreas
+# valkyrie Phone for GTA San Andreas
 
 The SP-RP phone for GTA San Andreas 1.0 US: calls, messages, contacts,
 camera, flashlight, maps, services and a trainer carried inside the ASI.
 Press P to open it. The iFruit appearance is the default; `Skin=Keypad`
-selects Valkyrie's optional keypad handset. Other original artwork is retained.
+selects valkyrie's optional keypad handset. Other original artwork is retained.
 
 Initialize the pinned SDK/ImGui submodules, then build:
 
@@ -50,11 +50,12 @@ The public Actions artifact ships:
 | --- | --- |
 | `valkyrie-phone.asi` | Windows x86 phone, embedded trainer, authored handset model, artwork and tones |
 | Offline Internet app | Eight authored pages: Cluckin' Bell (home/menu), Epsilon (home/join), eXsorbeo, Maccer, West Coast Rap Legends and sp-rp.com; embedded in the ASI |
-| Configuration and tools | Default INI and map builder |
-| Maps | `Valkyrie-radar-tiles`: 142 generated stock GTA SA tile pairs, 284 `.r3g`/`.r3a` files; ready to copy into the game folder |
+| Configuration | Default INI |
+| Optional tools | `Optional/Map builder/build-phone-map.ps1` |
+| Maps | `valkyrie-radar-tiles`: 142 generated stock GTA SA tile pairs, 284 `.r3g`/`.r3a` files; ready to copy into the game folder |
 | Optional phone as a weapon | Ready-to-copy model/texture/modloader definitions, configured `fastman92limitAdjuster_GTASA.ini` and stock-plus-phone `data/gtasa_weapon_config.dat`; requires Modloader 0.3.10 and fastman92 7.6 |
-| Installation and inventory | `INSTALL.txt`, optional weapon README, and `phone-content.json` pinning content URLs and SHA-256 hashes |
-| Source and credits | Source ZIP, licence, notices and `BUILD.txt` identifying the commit and ASI hash |
+| Installation | One `README.md` with normal installation, controls, optional weapon setup and map-builder instructions |
+| Credits | Licence and third-party notices; source remains in this repository |
 
 **Not included:** GTA IV websites, archived Rockstar promotional websites,
 game executables, original game archives, dependency binaries, or private build symbols. Generated
@@ -62,7 +63,7 @@ map tiles use stock SA geometry/textures and are release assets, kept outside Gi
 The normal installation copies the ASI, INI and tiles; weapon mode stays optional.
 For weapon mode, install [Modloader](https://github.com/thelink2012/modloader/releases/tag/v0.3.10)
 and [fastman92](https://www.fastman92.com/fastman92-limit-adjuster/), then copy
-`Optional - phone as a weapon/Copy into game folder` into the game folder,
+`Optional/Phone as a weapon/Copy into game folder` into the game folder,
 replacing the supplied configuration files. They already enable the weapon loader,
 retain its required author field and register the phone: no edits on a stock setup.
 Back up existing configs first; these replacement files are for stock SA plus the
@@ -106,6 +107,6 @@ Original notices and third-party credits remain in THIRD_PARTY_NOTICES.md.
 
 ## Download merged builds
 
-Download the **full install ZIP** from the [latest build release](https://github.com/darkcenturies/valkyrie-phone/releases/latest). Every successful merge to `main` publishes a permanent release containing the ASI, default configuration, **generated stock map tiles and ready-to-copy optional weapon configs**, map builder, source archive, installation instructions, licence and notices. A SHA-256 file accompanies the ZIP.
+Download the **full install ZIP** from the [latest build release](https://github.com/darkcenturies/valkyrie-phone/releases/latest). Every successful merge to `main` publishes a permanent release containing the ASI, default configuration, **generated stock map tiles and ready-to-copy optional weapon configs**, optional map builder, one installation README, licence and notices. The install ZIP contains no source archive, build report, content manifest or checksum file.
 
 The same complete package is also available as the `valkyrie-phone-gta-sa-1.0-<commit>` artifact in [Actions](https://github.com/darkcenturies/valkyrie-phone/actions), kept for 30 days. The separate [map content release](https://github.com/darkcenturies/valkyrie-phone/releases/tag/phone-content-v1) supplies pinned assets to the pipeline; it is not the full phone download. Actions verifies the map archive and every tile before publishing the complete build. No private symbols are included.

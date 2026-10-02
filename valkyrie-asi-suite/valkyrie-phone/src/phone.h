@@ -22,6 +22,9 @@ void Frame();
 // Game thread, from the HUD draw.
 void Draw();
 
+// Completed world frame, before the game's 2D/HUD pass adds any overlays.
+void CaptureScene();
+
 // Any thread: take the phone out as soon as the player can use it (asked by
 // another mod - the inventory's Use on its Phone - while its menu is up).
 void RequestOpen();

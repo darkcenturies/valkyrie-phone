@@ -30,8 +30,8 @@ param(
     [switch] $SkipInstall
 )
 $ErrorActionPreference = 'Stop'
-if (-not $WorkPath) { $WorkPath = Join-Path $PSScriptRoot 'Valkyrie-phone-map-work' }
-$temp = Join-Path ([IO.Path]::GetTempPath()) ('ValkyriePhoneMap-' + [Guid]::NewGuid().ToString('N'))
+if (-not $WorkPath) { $WorkPath = Join-Path $PSScriptRoot 'valkyrie-phone-map-work' }
+$temp = Join-Path ([IO.Path]::GetTempPath()) ('valkyriePhoneMap-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temp | Out-Null
 try {
     $zip = Join-Path $temp 'builder.zip'
