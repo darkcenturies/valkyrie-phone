@@ -51,7 +51,7 @@ The public Actions artifact ships:
 | `valkyrie-phone.asi` | Windows x86 phone, embedded trainer, authored handset model, artwork and tones |
 | Offline Internet app | Eight authored pages: Cluckin' Bell (home/menu), Epsilon (home/join), eXsorbeo, Maccer, West Coast Rap Legends and sp-rp.com; embedded in the ASI |
 | Configuration | Default INI |
-| Optional tools | `Optional/Map builder/build-phone-map.ps1` |
+| Optional tools | `Optional/build-phone-map.ps1` |
 | Maps | `valkyrie-radar-tiles`: 142 generated stock GTA SA tile pairs, 284 `.r3g`/`.r3a` files; ready to copy into the game folder |
 | Optional phone as a weapon | Ready-to-copy model/texture/modloader definitions, configured `fastman92limitAdjuster_GTASA.ini` and stock-plus-phone `data/gtasa_weapon_config.dat`; requires Modloader 0.3.10 and fastman92 7.6 |
 | Installation | One `README.md` with normal installation, controls, optional weapon setup and map-builder instructions |

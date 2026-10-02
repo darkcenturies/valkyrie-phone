@@ -48,7 +48,7 @@ $weaponLines = @(
     "$([char]0xA3) VALKYRIEPHONE            MELEE 10.0  1.6  19990 -1  12 FLOWERS        1  1    null"
 )
 [IO.File]::WriteAllLines((Join-Path $weapon 'valkyrie phone.txt'), [string[]]$weaponLines, [Text.Encoding]::GetEncoding(28591))
-$builder = Join-Path $Output 'Optional/Map builder'
+$builder = Join-Path $Output 'Optional'
 New-Item -ItemType Directory -Force -Path $builder | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build-phone-map.ps1') -Destination $builder
 Set-Content -LiteralPath (Join-Path $Output 'README.md') -Encoding ASCII -Value @'
@@ -91,7 +91,7 @@ modloader/valkyrie phone. The normal P-key phone does not need weapon mode.
 
 The supplied stock map is ready to use. For custom maps, install Python 3 and
 run: python -m pip install Pillow numpy
-From Optional/Map builder, run:
+From Optional, run:
 ./build-phone-map.ps1 -GamePath 'C:\Games\GTA San Andreas' -Test
 ./build-phone-map.ps1 -GamePath 'C:\Games\GTA San Andreas'
 The full run installs generated tiles into your game. -SkipInstall only builds
