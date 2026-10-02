@@ -715,72 +715,9 @@ bool Load(IDirect3DDevice9* d, const std::string& dff) {
     std::vector<Vertex> verts;
     std::vector<uint16_t> byPart[kParts];
     if (bytes.size() < 12 || !Parse(bytes, verts, byPart) || byPart[kScreen].empty()) return false;
-    // The side buttons: the only steel and black plastic standing out past
-    // the sides of the body, which the back spans exactly.
-    if (!byPart[kBack].empty()) {
-        float left = 1e9f, right = -1e9f;
-        for (uint16_t i : byPart[kBack]) {
-            left = std::min(left, verts[i].pos[0]);
-            right = std::max(right, verts[i].pos[0]);
-        }
-        const float margin = (right - left) * 0.004f;
-        std::vector<bool> ring(verts.size(), false);
-        for (int from : {kChrome, kBlack}) {
-            std::vector<uint16_t> kept;
-            for (size_t t = 0; t + 2 < byPart[from].size(); t += 3) {
-                bool out = false;
-                for (size_t c = 0; c < 3; ++c) {
-                    const float x = verts[byPart[from][t + c]].pos[0];
-                    out = out || x < left - margin || x > right + margin;
-                }
-                auto& to = out ? byPart[kButtons] : kept;
-                to.insert(to.end(), byPart[from].begin() + t, byPart[from].begin() + t + 3);
-                if (out && from == kBlack) {
-                    for (size_t c = 0; c < 3; ++c) ring[byPart[from][t + c]] = true;
-                }
-            }
-            byPart[from].swap(kept);
-        }
-        // Each its own colour, from its own quarter of vp_button: the sleep
-        // button red, as a power button is; volume up a bright blue and down
-        // a dark one; the ring switch orange, as the first iPhone's shows
-        // when it is set to silent. The ring switch's side is the volume's;
-        // the other is the sleep button's. Up is the model's +z.
-        const float middle = (left + right) * 0.5f;
-        float ringX = 0.0f, zLo = 1e9f, zHi = -1e9f;
-        int ringCount = 0;
-        for (size_t i = 0; i < verts.size(); ++i) {
-            if (ring[i]) ringX += verts[i].pos[0], ++ringCount;
-        }
-        const bool volumeLow = ringCount && ringX / ringCount < middle;
-        auto volumeSide = [&](float x) { return (x < middle) == volumeLow; };
-        for (uint16_t i : byPart[kButtons]) {
-            if (!ring[i] && volumeSide(verts[i].pos[0])) {
-                zLo = std::min(zLo, verts[i].pos[2]);
-                zHi = std::max(zHi, verts[i].pos[2]);
-            }
-        }
-        for (size_t t = 0; t + 2 < byPart[kButtons].size(); t += 3) {
-            const uint16_t* v = &byPart[kButtons][t];
-            const float x = (verts[v[0]].pos[0] + verts[v[1]].pos[0] + verts[v[2]].pos[0]) / 3.0f;
-            const float z = (verts[v[0]].pos[2] + verts[v[1]].pos[2] + verts[v[2]].pos[2]) / 3.0f;
-            const int cell = ring[v[0]] ? 3 : !volumeSide(x) ? 0 : z > (zLo + zHi) * 0.5f ? 1 : 2;
-            for (int c = 0; c < 3; ++c) {
-                verts[v[c]].uv[0] = (cell + 0.5f) / 4.0f;
-                verts[v[c]].uv[1] = 0.5f;
-            }
-        }
-        // Stood a millimetre proud, as the model has them, they are lost at
-        // the size the phone is on screen: out to a millimetre and a half.
-        std::vector<bool> moved(verts.size(), false);
-        for (uint16_t i : byPart[kButtons]) {
-            float& x = verts[i].pos[0];
-            if (moved[i]) continue;
-            moved[i] = true;
-            if (x < left) x = left - (left - x) * 1.5f;
-            if (x > right) x = right + (x - right) * 1.5f;
-        }
-    }
+    // Preserve the model's material groups, UVs and physical button dimensions.
+    // Classifying rim triangles by back-shell bounds also caught body edges,
+    // then overwrote shared UVs and stretched the geometry along the side.
     std::vector<uint16_t> indices;
     for (int k = 0; k < kParts; ++k) {
         g_ranges[k].first = static_cast<UINT>(indices.size());

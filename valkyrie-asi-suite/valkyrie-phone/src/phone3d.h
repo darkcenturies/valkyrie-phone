@@ -17,8 +17,7 @@
 namespace phone3d {
 
 // The model's parts, by the textures they are drawn with.
-// The side buttons are not a part of the model file: they are split off the
-// steel and plastic they are built of when it is read, to be coloured.
+// Side buttons keep the material and geometry supplied by the model.
 enum Part { kFront, kScreen, kBack, kChrome, kBlack, kLens, kButtons, kParts };
 extern const char* const kPartTextures[kParts];
 

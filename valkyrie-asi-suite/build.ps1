@@ -66,7 +66,7 @@ if ($Install -and [string]::IsNullOrWhiteSpace($game)) {
 }
 # The phone's version.
 $version = "0.2.1"
-$phoneVersion = "0.2.7-test"
+$phoneVersion = "0.2.8-test"
 
 # Visual Studio 2019 Build Tools. Found rather than hardcoded, because the
 # toolset version in the path changes with every update.
@@ -242,6 +242,13 @@ foreach ($targetSpec in $targets) {
                 }
             } else {
                 Write-Host "[build] no GTA IV found (give -Gta4Path to use one) - the browser has San Andreas' sites only" -ForegroundColor Yellow
+            }
+        }
+        if (-not (Test-Path -LiteralPath $webPack) -and -not (Test-Path -LiteralPath $keptPack)) {
+            # The authored SA pages need no GTA IV or archived website assets.
+            & python (Join-Path $root "valkyrie-phone\tools\iv-web\build-web-pack.py") --sa-only --no-archive $webPack
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $webPack)) {
+                throw "Phone sites could not be built. Install Pillow, Playwright and its Chromium browser (see README)."
             }
         }
         if (-not (Test-Path -LiteralPath $webPack)) { $webPack = $keptPack }

@@ -12,7 +12,7 @@ git submodule update --init --recursive
 ./valkyrie-asi-suite/build.ps1 -Release
 ```
 
-MSVC C++ Build Tools and a Windows SDK are required. An x86 ASI loader is
+MSVC C++ Build Tools and a Windows SDK are required. The bundled authored sites also need `python -m pip install Pillow playwright` and `python -m playwright install chromium`. The build fails if it cannot include the pages. An x86 ASI loader is
 required. Install with the game closed. Maps needs tiles built from the player's
 own game using the included builder. Optional phone-as-a-weapon installation needs
 modloader and a compatible fastman92 weapon type loader; follow both steps in
