@@ -1,6 +1,9 @@
 # The phone's HUD weapon icon
 
-`phone.png` is Valkyrie Atmosphere's inventory phone icon (made by
-valkyrie-inventory's make-phone-icon.py), our own artwork, set in a rounded-square frame drawn to match Zera's HQ weapon icons, at 256x256. make-phone-weapon.ps1
-packs it into valkyriephone.txd as `valkyriephoneicon`, the name the HUD looks
-for, so the phone as a weapon has an icon in any install.
+`phone.png` is our own 16x16 pixel artwork, with a heavy black outline and
+flat silver shading to match San Andreas's HUD. Regenerate it with
+`tools/generate-weapon-icon.py`. The packer uses nearest-neighbour filtering
+for `valkyriephoneicon`, keeping the enlarged pixels sharp.
+
+`make-phone-weapon.ps1` packs it into `valkyriephone.txd` for the optional
+phone weapon. Handset model textures are unchanged.
