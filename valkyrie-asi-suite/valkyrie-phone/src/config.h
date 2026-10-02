@@ -129,12 +129,17 @@ struct Config {
     bool liveView = true;
     // What CJ does with the phone: looking at it while it is up, holding it
     // up for a picture, holding it out for a selfie.
-    Anim useAnim{"betslp_loop", "otb", true};
+    Anim takeOutAnim{"betslp_in", "otb", false};
+    Anim useAnim{"betslp_lkabt", "otb", true};
+    Anim typeAnim{"betslp_loop", "otb", true};
+    Anim putAwayAnim{"betslp_out", "otb", false};
     Anim cameraAnim{"picstnd_in", "camera", false};
-    Anim selfieAnim{"ARRESTgun", "ped", false};
+    Anim selfieAnim{"picstnd_in", "camera", false};
+    Anim photoAnim{"picstnd_take", "camera", false};
+    Anim cameraOutAnim{"picstnd_out", "camera", false};
     // Where the lens is in the two camera poses.
     Lens cameraLens{0.05f, 0.60f, 0.65f};
-    Lens selfieLens{0.20f, 1.10f, 0.66f};
+    Lens selfieLens{0.05f, 0.60f, 0.65f};
     std::string homePage = "www.eyefind.info";
 };
 

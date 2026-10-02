@@ -1,4 +1,5 @@
 #include "phone.h"
+#include "phone_actions.h"
 #include "radar_start.h"
 
 #include <windows.h>
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstddef>
 #include <cstdio>
 #include <array>
 #include <functional>
@@ -4952,7 +4954,6 @@ void StopCamera(bool toPhone) {
     g_restoreCameraPending = g_restoreCameraPending || g.camera.gameCameraMoved || g_cameraControlsHeld;
     RestoreCameraControl();
     if (!wasOn) return;
-    StopPose();
     if (g.screen == Screen::Camera && !g.cameraPaused) {
         StartMove(Screen::Camera, g.camera.returnTo);
         g.screen = g.camera.returnTo;
@@ -5280,48 +5281,57 @@ void DrawFlash() {
     ui::Fill(0.0f, 0.0f, screen.x, screen.y, (alpha << 24) | 0xFFFFFF);
 }
 
-// --- CJ's poses ---------------------------------------------------------------
-//
-// While the phone is up CJ looks at it; for a picture he holds it up, for a
-// selfie he holds it out. The animations are the game's own, named in
-// [Animations]. At his ear for a call the game's phone task has him, and
-// with the phone lowered he is left alone so he can walk.
-
-constexpr uint16_t kPlayAnim = 0x0605;          // ped, anim, file, blend, loop, lock x, lock y, keep, ms
-constexpr uint16_t kClearTasks = 0x0687;
-constexpr uint16_t kPlayingAnim = 0x0611;       // ped, anim
-constexpr uint16_t kPauseAnim = 0x0612;         // ped, anim, paused
-constexpr uint16_t kAnimTime = 0x0613;          // ped, anim -> 0..1
+// --- CJ's phone actions ------------------------------------------------------
+// Stock SA clips, sequenced by action. Calls retain the game's mobile-phone task.
+constexpr uint16_t kPlayAnim = 0x0605;
+constexpr uint16_t kPlayingAnim = 0x0611;
+constexpr uint16_t kPauseAnim = 0x0612;
+constexpr uint16_t kAnimTime = 0x0613;
+constexpr uint16_t kSetAnimTime = 0x0614;
 constexpr uint16_t kRequestAnimation = 0x04ED;
 constexpr uint16_t kAnimationLoaded = 0x04EE;
 constexpr uint16_t kRemoveAnimation = 0x04EF;
 constexpr uint16_t kInAir = 0x0818;
-
-enum class Pose { None, Use, Camera, Selfie };
-
+using phone_actions::Pose;
 void Lower();
 
 struct PoseState {
     Pose now = Pose::None;
     config::Anim anim;
-    bool playing = false;    // the animation is on him (not skipped as broken)
-    bool seen = false;       // the game has been seen playing it
-    bool held = false;       // stopped on its last frame
-    ULONGLONG started = 0, checked = 0;
-    int tries = 0;           // times this pose's animation has been asked for without showing
-    int failedPoses = 0;     // poses in a row whose animation never showed at all
-    std::string loadedFile;  // an .ifp this asked the game to load
-    std::string broken;      // an animation that would not play; not tried again
-    // Every animation put on him since the phone came up. Once it is put
-    // away they are looked for for a while and taken off him, so none of
-    // them - a held camera pose under one that never started - can leave
-    // him stuck.
-    std::vector<std::string> used;
-    ULONGLONG sweepUntil = 0, sweptAt = 0, sweepFrom = 0;
-    int sweeps = 0;
+    bool playing = false, seen = false, held = false, resumeRaised = false;
+    ULONGLONG started = 0, checked = 0, typingAt = 0, photoAt = 0, earReleaseUntil = 0;
+    int tries = 0;
+    uintptr_t association = 0;
+    ULONGLONG loadStarted = 0;
+    std::string loadingFile;
+    std::string loadedFile, broken, fieldText;
+    const std::string* field = nullptr;
 } g_pose;
 
 bool IsPed(const std::string& file) { return _stricmp(file.c_str(), "ped") == 0; }
+
+// GTA SA 1.0 US CAnimBlendAssociation, matching plugin-sdk's 32-bit layout.
+// Fade only the association we started, rather than clearing all of CJ's tasks.
+struct PhoneAssociation {
+    uintptr_t vtable, next, prev;
+    uint16_t nodes, group;
+    uintptr_t blendNodes, hierarchy;
+    float amount, delta, time, speed, step;
+    uint16_t id, flags;
+};
+static_assert(offsetof(PhoneAssociation, delta) == 0x1C);
+static_assert(offsetof(PhoneAssociation, flags) == 0x2E);
+
+void FadePose(const config::Anim& anim) {
+    const uintptr_t ped = PlayerPed();
+    const uintptr_t clump = ped ? *reinterpret_cast<const uintptr_t*>(ped + 0x18) : 0;
+    if (!clump || anim.name.empty()) return;
+    auto* association = reinterpret_cast<PhoneAssociation*(__cdecl*)(uintptr_t, const char*)>(0x4D6870)(
+        clump, anim.name.c_str());
+    if (!association || !g_pose.association || reinterpret_cast<uintptr_t>(association) != g_pose.association) return;
+    association->flags |= 0x5; // playing (unpause), remove once its blend reaches zero
+    association->delta = -8.0f;
+}
 
 void ReleaseAnimFile() {
     if (!g_pose.loadedFile.empty()) {
@@ -5330,181 +5340,153 @@ void ReleaseAnimFile() {
     }
 }
 
-// Let go of him - but only out of our own animation: if something else has
-// him now (a mission, a fall, a punch), that is left alone.
 void StopPose() {
-    if (g_pose.now != Pose::None && g_pose.playing) logfile::Line("phone: pose off (%s)", g_pose.anim.name.c_str());
-    if (g_pose.now != Pose::None && g_pose.playing) {
-        if (const uintptr_t ped = PlayerPed()) {
-            const int handle = script::PedHandle(ped);
-            if (script::Command(kPlayingAnim, {handle, g_pose.anim.name.c_str()})) {
-                // Held on its last frame, it is paused: let go of first, or
-                // clearing his tasks can leave it on him.
-                if (g_pose.held) script::Command(kPauseAnim, {handle, g_pose.anim.name.c_str(), false});
-                script::Command(kClearTasks, {handle});
-            }
-        }
-    }
+    if (g_pose.playing) FadePose(g_pose.anim);
     g_pose.now = Pose::None;
-    g_pose.playing = false;
+    g_pose.playing = g_pose.seen = g_pose.held = false;
+    g_pose.association = 0;
+    g_pose.loadingFile.clear();
     ReleaseAnimFile();
-    if (!g_pose.used.empty()) {
-        g_pose.sweepFrom = GetTickCount64() + 1500;
-        g_pose.sweepUntil = g_pose.sweepFrom + 3000;
-        g_pose.sweeps = 0;
-    }
 }
 
-// Once the phone has been away long enough for its animation to have blended
-// out, anything of it still on him is taken off - once. The game can go on
-// reporting an animation for a while after it has let go of him, so this
-// never repeats: clearing his tasks over and over is itself what holds him
-// still.
-void SweepPoses(int handle, ULONGLONG now) {
-    if (g_pose.used.empty()) return;
-    // Never during a call: clearing his tasks would take the phone from his
-    // ear. What is left of a pose from before it is the ear task's to replace.
-    if (g.call.active || g.phoneAtEar) {
-        g_pose.used.clear();
-        return;
+bool FinishingHandAction() { return phone_actions::Leaving(g_pose.now) && g_pose.playing; }
+
+const config::Anim& PoseAnimation(Pose pose) {
+    const auto& c = config::Get();
+    switch (pose) {
+        case Pose::TakeOut: return c.takeOutAnim;
+        case Pose::Type: return c.typeAnim;
+        case Pose::Camera: return c.cameraAnim;
+        case Pose::Selfie: return c.selfieAnim;
+        case Pose::Photo: return c.photoAnim;
+        case Pose::CameraOut: return c.cameraOutAnim;
+        case Pose::PutAway: return c.putAwayAnim;
+        default: return c.useAnim;
     }
-    if (now >= g_pose.sweepUntil || g_pose.sweeps > 0) {
-        g_pose.used.clear();
-        return;
-    }
-    if (now < g_pose.sweepFrom) return;
-    // Not while he is getting into a car, falling, in a cutscene or the
-    // menu: waited for, until the sweep's time runs out.
-    if (!PlayerCanUsePhone() || InTransition(PlayerPed())) return;
-    for (const std::string& name : g_pose.used) {
-        if (!script::Command(kPlayingAnim, {handle, name.c_str()})) continue;
-        logfile::Line("phone: %s still on CJ %llu ms after the phone went away - cleared", name.c_str(),
-                      now - g_pose.sweepFrom + 1500);
-        script::Command(kClearTasks, {handle});
-        break;
-    }
-    g_pose.sweeps = 1;
 }
 
 void UpdatePose() {
     const uintptr_t ped = PlayerPed();
-    if (!ped) {
-        g_pose.now = Pose::None;
-        g_pose.playing = false;
-        return;
-    }
+    if (!ped) { StopPose(); return; }
     const int handle = script::PedHandle(ped);
-    Pose want = Pose::None;
-    game::VehicleState vehicle{};
-    const bool free = g.holding && !g.phoneAtEar && !(g.call.active && !g.call.speaker) &&
-                      PlayerCanUsePhone() && !game::PlayerVehicleState(vehicle) && !InTransition(ped) &&
-                      !script::Command(kInWater, {handle}) && !script::Command(kInAir, {handle});
-    if (free) {
-        if (g.camera.on) want = g.camera.selfie ? Pose::Selfie : Pose::Camera;
-        else if (g.out && g.focused) want = Pose::Use;
-    }
     const ULONGLONG now = GetTickCount64();
-    if (want == Pose::None && g_pose.now == Pose::None) SweepPoses(handle, now);
+    // Both physical keys and the phone's on-screen keyboards change this field.
+    if (g.field.value) {
+        if (g_pose.field == g.field.value && g_pose.fieldText != *g.field.value) g_pose.typingAt = now;
+        g_pose.fieldText = *g.field.value;
+    } else g_pose.fieldText.clear();
+    g_pose.field = g.field.value;
+    game::VehicleState vehicle{};
+    const bool earReturning = now < g_pose.earReleaseUntil;
+    const bool allowed = g.holding && !g.phoneAtEar && !earReturning &&
+                         !(g.call.active && !g.call.speaker) && PlayerCanUsePhone() &&
+                         !game::PlayerVehicleState(vehicle) && !InTransition(ped) &&
+                         !script::Command(kInWater, {handle}) && !script::Command(kInAir, {handle});
+    Pose desired = Pose::None;
+    if (g.camera.on) desired = g.camera.selfie ? Pose::Selfie : Pose::Camera;
+    else if (g.out && g.focused) desired = g_pose.typingAt && now - g_pose.typingAt < 900 ? Pose::Type : Pose::Use;
+    const bool shutter = g.camera.on && g.camera.shotAt && g.camera.shotAt != g_pose.photoAt;
+    if (shutter) g_pose.photoAt = g.camera.shotAt;
+    bool complete = !g_pose.playing;
+    const bool on = g_pose.playing && script::Command(kPlayingAnim, {handle, g_pose.anim.name.c_str()});
+    if (on) {
+        if (!g_pose.association) {
+            const uintptr_t clump = *reinterpret_cast<const uintptr_t*>(ped + 0x18);
+            auto* association = clump ? reinterpret_cast<PhoneAssociation*(__cdecl*)(uintptr_t, const char*)>(0x4D6870)(
+                clump, g_pose.anim.name.c_str()) : nullptr;
+            if (association && association->delta >= 0.0f) g_pose.association = reinterpret_cast<uintptr_t>(association);
+        }
+        g_pose.seen = g_pose.association != 0;
+        if (g_pose.seen && g_pose.resumeRaised) {
+            // The shutter ends with the handset still raised; do not replay its entry.
+            script::Command(kSetAnimTime, {handle, g_pose.anim.name.c_str(), 0.96f});
+            script::Command(kPauseAnim, {handle, g_pose.anim.name.c_str(), true});
+            g_pose.held = true;
+            g_pose.resumeRaised = false;
+        }
+        script::Locals time;
+        script::Command(kAnimTime, {handle, g_pose.anim.name.c_str(), script::Arg::Local(0)}, &time);
+        complete = g_pose.seen && time.Float(0) >= 0.96f;
+    } else if (g_pose.seen) complete = true;
+    // A failed or interrupted one-shot must not hold the handset/weapon forever.
+    if (phone_actions::OneShot(g_pose.now) && g_pose.playing && now - g_pose.started > 5000) complete = true;
+    const Pose want = phone_actions::Next(g_pose.now, desired, complete, allowed, shutter);
+    if (want == Pose::None) { StopPose(); return; }
     if (want == g_pose.now) {
-        if (want == Pose::None || !g_pose.playing) return;
-        const bool on = script::Command(kPlayingAnim, {handle, g_pose.anim.name.c_str()});
-        if (!g_pose.seen) {
-            if (on) {
-                g_pose.seen = true;
-                g_pose.checked = now;
-                g_pose.failedPoses = 0;
-                if (g_pose.tries > 1) logfile::Line("phone: %s took on try %d", g_pose.anim.name.c_str(), g_pose.tries);
-            } else if (now - g_pose.started > 1000) {
-                // Not on him yet: the game turns a task down while he is
-                // mid-step, turning or still blending out of the last one.
-                // Asked again until it takes - the phone is never up in
-                // his hand with him doing nothing. Only an animation that
-                // never once shows, pose after pose, is taken for a
-                // mistake in [Animations].
-                if (g_pose.tries >= 6) {
-                    if (++g_pose.failedPoses >= 3) {
-                        logfile::Line("phone: animation %s in %s.ifp never plays - check [Animations]",
-                                      g_pose.anim.name.c_str(), g_pose.anim.file.c_str());
-                        g_pose.broken = g_pose.anim.file + "/" + g_pose.anim.name;
-                        g_pose.playing = false;
-                        ReleaseAnimFile();
-                        return;
-                    }
-                    g_pose.tries = 0;
-                }
-                if (g_pose.tries == 1) logfile::Line("phone: %s not on CJ yet - asking again", g_pose.anim.name.c_str());
-                const config::Anim& a = g_pose.anim;
-                script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 4.0f, a.loop, false, false, !a.loop, -1});
+        if (!g_pose.playing) return;
+        if (!g_pose.seen && now - g_pose.started > 1000) {
+            if (g_pose.tries >= 3) {
+                logfile::Line("phone: animation %s in %s did not start", g_pose.anim.name.c_str(), g_pose.anim.file.c_str());
+                g_pose.broken = g_pose.anim.file + "/" + g_pose.anim.name;
+                FadePose(g_pose.anim);
+                g_pose.playing = false;
+                ReleaseAnimFile();
+            } else {
+                const auto& a = g_pose.anim;
+                script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop && !phone_actions::OneShot(want),
+                                          false, false, !a.loop && !phone_actions::OneShot(want), -1});
                 ++g_pose.tries;
                 g_pose.started = now;
             }
-            return;
-        }
-        // One that holds its last frame is stopped there, so it is held for
-        // as long as the pose lasts rather than played over again.
-        if (!g_pose.anim.loop && on && !g_pose.held) {
-            script::Locals t;
-            script::Command(kAnimTime, {handle, g_pose.anim.name.c_str(), script::Arg::Local(0)}, &t);
-            if (t.Float(0) >= 0.95f) {
+        } else if (!phone_actions::OneShot(want)) {
+            if (g_pose.seen && !on && !g_pose.held) {
+                StopPose();
+                Lower(); // Interrupted by the game; never force CJ back into the animation.
+                return;
+            }
+            if (!g_pose.anim.loop && on && complete && !g_pose.held) {
                 script::Command(kPauseAnim, {handle, g_pose.anim.name.c_str(), true});
                 g_pose.held = true;
             }
         }
-        // Knocked out of it - shoved, hit, fallen over: the phone comes down
-        // and he has his controls back, rather than being put straight back
-        // into the pose from wherever he landed.
-        if (now - g_pose.checked > 500) {
-            g_pose.checked = now;
-            if (!on) {
-                logfile::Line("phone: CJ was knocked out of the pose - lowering the phone");
-                g_pose.now = Pose::None;
-                g_pose.playing = false;
-                ReleaseAnimFile();
-                Lower();
-            }
-        }
         return;
     }
-    if (want == Pose::None) {
-        StopPose();
-        return;
-    }
-    const config::Config& c = config::Get();
-    const config::Anim& a = want == Pose::Use ? c.useAnim : want == Pose::Camera ? c.cameraAnim : c.selfieAnim;
+    const auto& a = PoseAnimation(want);
     if (a.name.empty() || _stricmp(g_pose.broken.c_str(), (a.file + "/" + a.name).c_str()) == 0) {
-        // Nothing to play: take him out of the last pose and hold the phone.
         StopPose();
-        g_pose.now = want;
+        g_pose.now = want; // Disabled/failed one-shots advance next frame; no retry loop.
+        return;
+    }
+    if (g_pose.playing && !phone_actions::OneShot(g_pose.now) && !phone_actions::OneShot(want) &&
+        phone_actions::CameraPose(g_pose.now) && phone_actions::CameraPose(want) &&
+        phone_actions::SameName(a.name, g_pose.anim.name) && phone_actions::SameName(a.file, g_pose.anim.file) &&
+        a.loop == g_pose.anim.loop) {
+        g_pose.now = want; // Front/rear flip with the same stance keeps the existing raised arms.
         return;
     }
     if (!IsPed(a.file)) {
-        // Loaded over a few frames; the pose before it is kept meanwhile.
         script::Command(kRequestAnimation, {a.file.c_str()});
-        if (!script::Command(kAnimationLoaded, {a.file.c_str()})) return;
+        if (!script::Command(kAnimationLoaded, {a.file.c_str()})) {
+            if (g_pose.loadingFile != a.file) {
+                g_pose.loadingFile = a.file;
+                g_pose.loadStarted = now;
+            } else if (now - g_pose.loadStarted > 3000) {
+                logfile::Line("phone: animation block %s did not load", a.file.c_str());
+                StopPose();
+                g_pose.broken = a.file + "/" + a.name;
+                g_pose.now = want;
+            }
+            return;
+        }
     }
-    // Out of the last pose before the next: a held one left under a new one
-    // that fails to start would otherwise stay on him.
-    if (g_pose.now != Pose::None && g_pose.playing &&
-        script::Command(kPlayingAnim, {handle, g_pose.anim.name.c_str()})) {
-        if (g_pose.held) script::Command(kPauseAnim, {handle, g_pose.anim.name.c_str(), false});
-        script::Command(kClearTasks, {handle});
-    }
+    const bool resumeRaised = phone_actions::ResumeHeldCamera(g_pose.now, want) && !a.loop;
+    if (g_pose.playing) FadePose(g_pose.anim);
     const std::string previousFile = g_pose.loadedFile;
-    if (std::find(g_pose.used.begin(), g_pose.used.end(), a.name) == g_pose.used.end()) g_pose.used.push_back(a.name);
-    g_pose.sweepUntil = 0;
-    script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 4.0f, a.loop, false, false, !a.loop, -1});
-    logfile::Line("phone: pose %s from %s (%s)", a.name.c_str(), a.file.c_str(), a.loop ? "looping" : "held");
+    script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop && !phone_actions::OneShot(want),
+                              false, false, !a.loop && !phone_actions::OneShot(want), -1});
     g_pose.now = want;
+    g_pose.loadingFile.clear();
+    g_pose.association = 0;
     g_pose.anim = a;
+    g_pose.resumeRaised = resumeRaised;
     g_pose.playing = true;
-    g_pose.seen = false;
-    g_pose.held = false;
+    g_pose.seen = g_pose.held = false;
     g_pose.tries = 1;
     g_pose.started = g_pose.checked = now;
     g_pose.loadedFile = IsPed(a.file) ? std::string() : a.file;
-    if (!previousFile.empty() && _stricmp(previousFile.c_str(), a.file.c_str()) != 0) {
+    if (!previousFile.empty() && _stricmp(previousFile.c_str(), a.file.c_str()) != 0)
         script::Command(kRemoveAnimation, {previousFile.c_str()});
-    }
+    logfile::Line("phone: action %s from %s", a.name.c_str(), a.file.c_str());
 }
 
 // --- Camera Roll ------------------------------------------------------------
@@ -6594,7 +6576,6 @@ void Lower() {
     }
     g.focused = false;
     input::Capture(false);
-    StopPose();
 }
 
 void Raise() {
@@ -6818,7 +6799,7 @@ void WieldPhone(uintptr_t ped, int type) {
     const bool onFoot = true;
     const bool wielded = CurrentSlot(ped) == kPhoneWeaponSlot;
     auto select = [&](int slot) { reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, slot); };
-    const bool want = (g.out || g.camera.on) && onFoot && PlayerAble();
+    const bool want = (g.out || g.camera.on || FinishingHandAction()) && onFoot && PlayerAble();
     if (wielded && !g.wieldedLastFrame && !g.out && PlayerCanUsePhone()) {
         // Scrolled onto: out it comes, lowered at his side - the mouse and its
         // wheel stay the game's, to scroll on past it. The right button raises it.
@@ -6828,6 +6809,7 @@ void WieldPhone(uintptr_t ped, int type) {
     } else if (!wielded && g.wieldedLastFrame && g.out) {
         // Another weapon chosen: away it goes, and that weapon stays.
         g.holsteredSlot = -1;
+        StopPose();
         PutAway();
     } else if (want && !wielded && !g.wieldedLastFrame) {
         // Taken out some other way (P, another mod): it becomes the weapon in
@@ -6856,7 +6838,7 @@ void HoldPhone() {
     }
     game::VehicleState vehicle{};
     const bool onFoot = !game::PlayerVehicleState(vehicle);
-    const bool want = (g.out || g.camera.on) && onFoot && PlayerAble();
+    const bool want = (g.out || g.camera.on || FinishingHandAction()) && onFoot && PlayerAble();
     auto slot = [&] { return static_cast<int>(*reinterpret_cast<const uint8_t*>(ped + kPedWeaponSlot)); };
     auto fists = [&] { reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, 0); };
 
@@ -7514,18 +7496,7 @@ void Frame() {
         if (const uintptr_t ped = PlayerPed()) {
             script::Command(kTaskUseMobilePhone, {script::PedHandle(ped), wantEar});
             logfile::Line("phone: %s the ear", wantEar ? "to" : "away from");
-            // Once it has had time to put the phone away, the game's talking
-            // animation must be off him too: looked for, and cleared if not.
-            if (!wantEar) {
-                for (const char* name : {"phone_talk", "phone_in"}) {
-                    if (std::find(g_pose.used.begin(), g_pose.used.end(), name) == g_pose.used.end())
-                        g_pose.used.push_back(name);
-                }
-                const ULONGLONG t = GetTickCount64();
-                g_pose.sweepFrom = t + 2500;
-                g_pose.sweepUntil = t + 5500;
-                g_pose.sweeps = 0;
-            }
+            if (!wantEar) g_pose.earReleaseUntil = GetTickCount64() + 1200;
         }
         g.phoneAtEar = wantEar;
         g.earLostAt = 0;
@@ -7556,7 +7527,7 @@ void Frame() {
         }
     }
     if (g.loaded) HoldPhone();
-    phone_model::SetHand(g.holding && !g.phoneAtEar && g.loaded, config::Get().handTurn,
+    phone_model::SetHand(g.holding && !g.phoneAtEar && GetTickCount64() >= g_pose.earReleaseUntil && g.loaded, config::Get().handTurn,
                          config::Get().handOffset, config::Get().handFlip);
     // Neither in the hand nor at the ear: model 330 is the game's again.
     if (!g.holding && !g.phoneAtEar) phone_model::Use(false);
