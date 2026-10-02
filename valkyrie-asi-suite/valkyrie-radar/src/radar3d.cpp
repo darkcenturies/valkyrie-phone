@@ -4,6 +4,7 @@
 #include "radarbox.h"
 #include "radarcfg.h"
 #include "radar_logo.h"
+#include "water_mesh.h"
 #include "router.h"
 #include <algorithm>
 #include <atomic>
@@ -354,6 +355,7 @@ struct Tile {
   }
 };
 std::map<std::pair<int, int>, Tile *> g_tiles;
+std::map<std::pair<int, int>, DWORD> g_tileRetry;
 IDirect3D9 *g_d3d{};
 IDirect3DDevice9 *g_iso{};
 HWND g_isoWindow{};
@@ -860,6 +862,7 @@ void DropIso() {
   for (auto &p : g_tiles)
     delete p.second;
   g_tiles.clear();
+  g_tileRetry.clear();
   if (g_read)
     g_read->Release();
   if (g_rtMS)
@@ -1047,6 +1050,12 @@ Tile *Load(int x, int y) {
   auto it = g_tiles.find(key);
   if (it != g_tiles.end())
     return it->second;
+  const auto retry = g_tileRetry.find(key);
+  if (retry != g_tileRetry.end() && GetTickCount()-retry->second < 1000) return nullptr;
+  auto rejected = [&](const char* reason) -> Tile* {
+    logfile::Line("radar3d: tile %d_%d rejected: %s",x,y,reason);
+    return g_tiles[key] = nullptr;
+  };
   std::ifstream f(Path(x, y, ".r3g"), std::ios::binary);
   GHeader h{};
   f.read((char *)&h, sizeof h);
@@ -1059,50 +1068,50 @@ Tile *Load(int x, int y) {
   // a too-low cap here reads as "tiles randomly missing," not a crash.
   if (!f || (!v2 && memcmp(h.magic, "R3G1", 4)) || !h.nv || !h.ni ||
       h.nv > 10000000 || h.ni > 9000000)
-    return g_tiles[key] = nullptr;
+    return rejected("geometry header/counts");
   // The vertices have to actually be in the file. R3G2 counts groups in `ni`
   // rather than indices, and each group carries its own header and index
   // block, so only the vertex block can be checked exactly here - the group
   // blocks are checked as they are read.
   if (std::streamoff(h.nv) * std::streamoff(sizeof(Vertex)) > Remaining(f))
-    return g_tiles[key] = nullptr;
+    return rejected("truncated vertex block");
   std::vector<Vertex> v(h.nv);
   f.read((char *)v.data(), v.size() * sizeof(Vertex));
   struct CpuGroup { GroupHeader h; std::vector<uint32_t> i; };
   std::vector<CpuGroup> groups;
   if (v2) {
     if (std::streamoff(h.ni) * std::streamoff(sizeof(GroupHeader) + 12) > Remaining(f))
-      return g_tiles[key] = nullptr;
+      return rejected("truncated group table");
     groups.resize(h.ni);
     for (auto &g : groups) {
       f.read((char *)&g.h, sizeof g.h);
       if (!f || !g.h.ni || g.h.ni % 3 || g.h.ni > 9000000 ||
           std::streamoff(g.h.ni) * 4 > Remaining(f))
-        return g_tiles[key] = nullptr;
+        return rejected("invalid group indices/count");
       g.i.resize(g.h.ni); f.read((char *)g.i.data(), g.i.size()*4);
     }
   } else {
     if (std::streamoff(h.ni) * 4 > Remaining(f))
-      return g_tiles[key] = nullptr;
+      return rejected("truncated legacy indices");
     groups.resize(1); groups[0].h.ni=h.ni; groups[0].i.resize(h.ni);
     f.read((char *)groups[0].i.data(), groups[0].i.size()*4);
   }
   if (!f)
-    return g_tiles[key] = nullptr;
+    return rejected("geometry read failed");
   for (const auto &group : groups)
     for (uint32_t index : group.i)
-      if (index >= h.nv) return g_tiles[key] = nullptr;
+      if (index >= h.nv) return rejected("vertex index out of bounds");
   std::ifstream a(Path(x, y, ".r3a"), std::ios::binary);
   AHeader ah{};
   a.read((char *)&ah, sizeof ah);
   if (!a || memcmp(ah.magic, "R3A1", 4) || !ah.w || !ah.h || ah.w > 2048 ||
       ah.h > 2048 ||
       std::streamoff(ah.w) * std::streamoff(ah.h) * 4 > Remaining(a))
-    return g_tiles[key] = nullptr;
+    return rejected("invalid or truncated atlas");
   std::vector<uint32_t> pixels(size_t(ah.w) * ah.h);
   a.read((char *)pixels.data(), pixels.size() * 4);
   if (!a)
-    return g_tiles[key] = nullptr;
+    return rejected("atlas read failed");
   Tile *t = new Tile;
   t->nv = h.nv;
   t->collisionVertices.reserve(v.size());
@@ -1147,9 +1156,13 @@ Tile *Load(int x, int y) {
     t->tex->UnlockRect(0);
   }
   if (FAILED(hr)) {
+    logfile::Line("radar3d: tile %d_%d GPU allocation/upload failed: 0x%08lx; retrying",x,y,static_cast<unsigned long>(hr));
     delete t;
-    return g_tiles[key] = nullptr;
+    g_tileRetry[key]=GetTickCount();
+    return nullptr;
   }
+  g_tileRetry.erase(key);
+  logfile::Line("radar3d: tile %d_%d loaded: %u vertices, %zu groups",x,y,h.nv,groups.size());
   g_tiles[key] = t;
   return t;
 }
@@ -1166,12 +1179,14 @@ int g_phoneKeep[4] = {1, 0, 1, 0};
 ULONGLONG g_phoneKeepAt = 0;
 
 void Retire(int minx, int maxx, int miny, int maxy) {
-  const bool keepPhone = GetTickCount64() - g_phoneKeepAt < 2000;
+  for (auto it = g_tileRetry.begin(); it != g_tileRetry.end();) {
+    const auto key=it->first;
+    if (key.first<minx || key.first>maxx || key.second<miny || key.second>maxy) it=g_tileRetry.erase(it);
+    else ++it;
+  }
   for (auto it = g_tiles.begin(); it != g_tiles.end();) {
     int x = it->first.first, y = it->first.second;
-    const bool forPhone = keepPhone && x >= g_phoneKeep[0] && x <= g_phoneKeep[1] && y >= g_phoneKeep[2] &&
-                          y <= g_phoneKeep[3];
-    if (!forPhone && (x < minx || x > maxx || y < miny || y > maxy)) {
+    if (x < minx || x > maxx || y < miny || y > maxy) {
       delete it->second;
       it = g_tiles.erase(it);
     } else
@@ -1309,13 +1324,18 @@ void OneStage() {
 }
 
 bool DrawWaterPlane(float ox,float oy,float extent) {
-  // The world3d export contains land/buildings but no GTA water geometry.
-  // Seed the depth buffer with a plane just below sea level; real terrain is
-  // drawn afterwards and naturally covers it, leaving water visible only in
-  // oceans, rivers and canals where the export has no land surface.
   struct WaterVertex { float x,y,z; uint32_t colour; };
-  constexpr float level=-1.0f;
-  constexpr uint32_t colour=0xffaecbd1; // pale blue-grey GTA VI map water
+  constexpr uint32_t colour=0xffaecbd1;
+  static const auto patches = [] {
+    char path[MAX_PATH]{};
+    GetModuleFileNameA(nullptr,path,MAX_PATH);
+    std::string root(path);
+    root.resize(root.find_last_of("\\/")+1);
+    std::ifstream input(root+"data\\water.dat");
+    return radar_water::Read(input);
+  }();
+  const auto mesh=radar_water::Mesh(patches,ox,oy,extent);
+  if (mesh.empty()) return false;
   OneStage();
   g_iso->SetTexture(0,nullptr);
   g_iso->SetFVF(D3DFVF_XYZ|D3DFVF_DIFFUSE);
@@ -1326,34 +1346,17 @@ bool DrawWaterPlane(float ox,float oy,float extent) {
   g_iso->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);
   g_iso->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_DIFFUSE);
 
-  // Tessellated, not one big quad.
-  //
-  // Fog is a per-vertex calculation interpolated across the triangle, and this
-  // sheet covers the entire capture range - so its only four corners all sat
-  // hundreds of units out, every one of them past fogEnd and therefore fully
-  // fogged. The whole surface came out the colour of the horizon, which by day
-  // is near white, and the sea became indistinguishable from the sky. That is
-  // why the water kept disappearing.
-  //
-  // A grid puts vertices near the camera as well, so the water reads as water
-  // underfoot and only fades out where everything else does. A few hundred
-  // triangles of flat colour costs nothing next to the tiles.
-  constexpr int kCells = 24;
-  const float step = extent * 2.f / kCells;
-  const float x0 = ox - extent, y0 = oy - extent;
-  WaterVertex row[(kCells + 1) * 2];
-  bool drew = false;
-  for (int j = 0; j < kCells; j++) {
-    const float ya = y0 + step * j, yb = ya + step;
-    for (int i = 0; i <= kCells; i++) {
-      const float x = x0 + step * i;
-      row[i * 2]     = {x, ya, level, colour};
-      row[i * 2 + 1] = {x, yb, level, colour};
-    }
-    if (SUCCEEDED(g_iso->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP,
-                                         (kCells + 1) * 2 - 2, row,
-                                         sizeof(WaterVertex))))
-      drew = true;
+  std::vector<WaterVertex> vertices;
+  vertices.reserve(mesh.size());
+  for (const auto& point : mesh) vertices.push_back({point.x,point.y,point.z,colour});
+  D3DCAPS9 caps{};
+  g_iso->GetDeviceCaps(&caps);
+  const size_t budget=caps.MaxPrimitiveCount ? caps.MaxPrimitiveCount : 65535;
+  bool drew=false;
+  for (size_t start=0; start<vertices.size();) {
+    const UINT count=static_cast<UINT>(std::min(budget,(vertices.size()-start)/3));
+    if (SUCCEEDED(g_iso->DrawPrimitiveUP(D3DPT_TRIANGLELIST,count,vertices.data()+start,sizeof(WaterVertex)))) drew=true;
+    start+=size_t(count)*3;
   }
   g_iso->SetFVF(D3DFVF_XYZ|D3DFVF_DIFFUSE|D3DFVF_TEX1);
   g_iso->SetTextureStageState(0,D3DTSS_COLOROP,D3DTOP_BLENDFACTORALPHA);
@@ -3065,7 +3068,8 @@ bool RenderIso(float ox, float oy, float oz, float /*range*/, float angle) {
       maxx = (int)floorf((ox + extent) / kTile),
       miny = (int)floorf((oy - extent) / kTile),
       maxy = (int)floorf((oy + extent) / kTile);
-  Retire(minx - 1, maxx + 1, miny - 1, maxy + 1);
+  // Retire unused neighbours before allocating the visible tiles.
+  Retire(minx, maxx, miny, maxy);
   g_lastMinX = minx;
   g_lastMaxX = maxx;
   g_lastMinY = miny;
@@ -3260,10 +3264,16 @@ bool RenderIso(float ox, float oy, float oz, float /*range*/, float angle) {
            prims = maxPrims < available ? maxPrims : available;
       if (!prims)
         break;
-      if (SUCCEEDED(g_iso->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0,
-                                                t->nv, start, prims)) &&
-          count)
-        draws++;
+      const HRESULT drawn=g_iso->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,0,0,t->nv,start,prims);
+      if (SUCCEEDED(drawn) && count) draws++;
+      if (FAILED(drawn)) {
+        static DWORD lastError=0;
+        const DWORD now=GetTickCount();
+        if (now-lastError>=1000) {
+          logfile::Line("radar3d: geometry draw failed 0x%08lx, bounds %.1f,%.1f..%.1f,%.1f vertices=%u",static_cast<unsigned long>(drawn),group->minx,group->miny,group->maxx,group->maxy,t->nv);
+          lastError=now;
+        }
+      }
       start += prims * 3;
     }
   };
