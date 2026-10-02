@@ -2,6 +2,7 @@
 from pathlib import Path
 import math
 import struct
+import numpy as np
 from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -45,6 +46,46 @@ for bone in (32,33,34):
     a=parsed['vp_selfie'][bone][-1][:4]; b=parsed['vp_selfie_shot'][bone][0][:4]
     assert abs(sum(x*y for x,y in zip(a,b)))>0.99999
 assert parsed['vp_selfie'][32][-1][:4]!=parsed['vp_camera'][32][-1][:4]
+# Decode the packed quaternions independently and propagate a standard ped rig.
+# Animated SA axes: world right +X, forward +Y, up +Z. The neck's local
+# X/Y/Z axes are up/forward/left after root/pelvis animation, unlike DFF bind axes.
+def rotation(frame):
+    x,y,z,w=frame[:4]
+    return np.array([[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],
+                     [2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],
+                     [2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]])
+def hand_pose(name, side=31, frame=-1):
+    tracks=parsed[name]
+    neck=np.array([[0,0,-1],[0,1,0],[1,0,0]])@rotation(tracks[4][frame])
+    pos=np.array([0.,0.,.55])+neck@np.array([0.,0.,.033 if side==31 else -.033])
+    orient=neck@rotation(tracks[side][frame])
+    for bone,length in ((side+1,.165),(side+2,.296),(side+3,.281)):
+        pos+=orient@np.array([length,0.,0.]);orient=orient@rotation(tracks[bone][frame])
+    # Same local turns as HandTurn=180,0,0 and HandFlip=1 around model Z.
+    model=orient@np.diag([1.,-1.,-1.])@np.diag([-1.,-1.,1.])
+    return pos,model,neck@rotation(tracks[5][frame])
+for name in ('vp_use','vp_type','vp_camera','vp_selfie','vp_photo','vp_selfie_shot'):
+    pos,model,head=hand_pose(name)
+    assert pos[1]>.12, f'{name}: left hand behind the character: {pos}'
+    assert model[2,2]>.9, f'{name}: handset upside down'
+    assert -model[1,1]>.9, f'{name}: rear lens faces the character'
+    if name in ('vp_use','vp_type'):
+        assert head[2,1]<-.05, f'{name}: head looks up rather than down'
+pos,model,_=hand_pose('vp_call')
+assert pos[0]<-.10 and pos[2]>.68, 'Call must hold the phone beside the left ear'
+assert model[0,1]>.9, 'Call screen must face the left ear'
+left,_,_=hand_pose('vp_type')
+right,model,_=hand_pose('vp_type',side=21)
+orient=model@np.diag([-1.,1.,-1.])
+tip=right+orient@np.array([.088,0.,0.])
+orient=orient@rotation(parsed['vp_type'][25][-1])
+tip+=orient@np.array([.062,0.,0.])
+assert np.linalg.norm(tip-left)<.20, 'Typing fingers point away from the handset'
+for name in ('vp_camera','vp_selfie','vp_call_in','vp_to_selfie','vp_to_camera'):
+    count=len(parsed[name][32])
+    for frame in range(count):
+        pos,_,_=hand_pose(name,frame=frame)
+        assert pos[1]>-.05, f'{name}: transition passes behind the torso'
 art=ROOT/'valkyrie-phone/assets/generated'
 legacy=list(art.glob('*_64.png'))
 assert len(legacy)>=80
@@ -55,4 +96,4 @@ for name in ('app_camera','app_photos','app_maps','app_phone','app_text','app_co
              'app_stocks','app_radio','app_calendar','app_flashlight'):
     assert Image.open(art/(name+'.png')).size==(16,16)
     assert Image.open(art/(name+'_64.png')).size==(64,64)
-print('PASS: 18 valid upper-body clips, closed loops, distinct selfie/shutter poses and both icon sets.')
+print('PASS: 18 valid clips, forward hand positions, upright handset, ear-facing call grip, closed loops and both icon sets.')
