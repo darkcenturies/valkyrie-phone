@@ -5,6 +5,7 @@
 #include "radarcfg.h"
 #include "radar_logo.h"
 #include "water_mesh.h"
+#include "map_tile_cache.h"
 #include "router.h"
 #include <algorithm>
 #include <atomic>
@@ -1045,7 +1046,7 @@ std::streamoff Remaining(std::ifstream &f) {
   return end > here ? end - here : 0;
 }
 
-Tile *Load(int x, int y) {
+Tile *LoadTile(int x, int y) {
   auto key = std::make_pair(x, y);
   auto it = g_tiles.find(key);
   if (it != g_tiles.end())
@@ -1112,7 +1113,8 @@ Tile *Load(int x, int y) {
   a.read((char *)pixels.data(), pixels.size() * 4);
   if (!a)
     return rejected("atlas read failed");
-  Tile *t = new Tile;
+  auto ownedTile = std::make_unique<Tile>();
+  Tile *t = ownedTile.get();
   t->nv = h.nv;
   t->collisionVertices.reserve(v.size());
   for (const auto &vertex : v)
@@ -1132,7 +1134,8 @@ Tile *Load(int x, int y) {
     t->vb->Unlock();
   }
   for (auto &src : groups) {
-    auto *g = new DrawGroup;
+    auto ownedGroup = std::make_unique<DrawGroup>();
+    auto *g = ownedGroup.get();
     g->ni=src.h.ni; g->flags=src.h.flags;
     g->minx=src.h.minx;g->miny=src.h.miny;g->minz=src.h.minz;
     g->maxx=src.h.maxx;g->maxy=src.h.maxy;g->maxz=src.h.maxz;
@@ -1145,6 +1148,7 @@ Tile *Load(int x, int y) {
     if (SUCCEEDED(hr)) hr=g->ib->Lock(0,0,&p,0);
     if (SUCCEEDED(hr)) { memcpy(p,src.i.data(),src.i.size()*4);g->ib->Unlock(); }
     t->groups.push_back(g);
+    ownedGroup.release();
   }
   D3DLOCKED_RECT lr{};
   if (SUCCEEDED(hr))
@@ -1157,14 +1161,20 @@ Tile *Load(int x, int y) {
   }
   if (FAILED(hr)) {
     logfile::Line("radar3d: tile %d_%d GPU allocation/upload failed: 0x%08lx; retrying",x,y,static_cast<unsigned long>(hr));
-    delete t;
     g_tileRetry[key]=GetTickCount();
     return nullptr;
   }
   g_tileRetry.erase(key);
   logfile::Line("radar3d: tile %d_%d loaded: %u vertices, %zu groups",x,y,h.nv,groups.size());
   g_tiles[key] = t;
-  return t;
+  return ownedTile.release();
+}
+Tile *Load(int x, int y) {
+  try { return LoadTile(x, y); }
+  catch (const std::bad_alloc &) {
+    logfile::Line("radar3d: tile %d_%d deferred: insufficient memory", x, y);
+    return nullptr;
+  }
 }
 D3DMATRIX Mat() {
   D3DMATRIX m{};
@@ -1179,18 +1189,22 @@ int g_phoneKeep[4] = {1, 0, 1, 0};
 ULONGLONG g_phoneKeepAt = 0;
 
 void Retire(int minx, int maxx, int miny, int maxy) {
+  const maptiles::Rect radar{minx, maxx, miny, maxy};
+  const maptiles::Rect phone{g_phoneKeep[0], g_phoneKeep[1], g_phoneKeep[2], g_phoneKeep[3]};
+  const bool phoneActive = g_phoneKeepAt && GetTickCount64() - g_phoneKeepAt <= 1000;
+  // Keep the two views, not the rectangle spanning every tile between them.
+  const auto keep = [&](const std::pair<int, int>& key) {
+    return maptiles::Retains(radar, phone, phoneActive, key.first, key.second);
+  };
   for (auto it = g_tileRetry.begin(); it != g_tileRetry.end();) {
-    const auto key=it->first;
-    if (key.first<minx || key.first>maxx || key.second<miny || key.second>maxy) it=g_tileRetry.erase(it);
+    if (!keep(it->first)) it = g_tileRetry.erase(it);
     else ++it;
   }
   for (auto it = g_tiles.begin(); it != g_tiles.end();) {
-    int x = it->first.first, y = it->first.second;
-    if (x < minx || x > maxx || y < miny || y > maxy) {
+    if (!keep(it->first)) {
       delete it->second;
       it = g_tiles.erase(it);
-    } else
-      ++it;
+    } else ++it;
   }
 }
 bool SegmentIntersectsBounds(const DrawGroup &g, float ax, float ay, float az,
@@ -4141,7 +4155,7 @@ bool DrawBackground() {
 // leaves both as the radar expects them: the viewport back to the whole
 // capture, the transforms set afresh by every RenderIso. None of the radar's
 // own state changes: no route matching, no camera boom, no fading, and tiles
-// are only let go once the cache has grown well past what the radar holds.
+// are retired before loading when neither current view needs them.
 IDirect3DTexture9 *g_phoneTex{};
 UINT g_phoneW = 0, g_phoneH = 0;
 D3DMATRIX g_phoneW2V{}, g_phoneProj{};
@@ -4175,8 +4189,12 @@ IDirect3DTexture9 *RenderPhoneMap(const float *view, UINT w, UINT h) {
     g_phoneValid = false;
   }
   // Nothing moved and nothing is still loading: the last picture stands.
-  if (g_phoneValid && g_phoneComplete && !memcmp(view, g_phoneView, sizeof g_phoneView))
+  if (g_phoneValid && g_phoneComplete && g_phoneKeepAt &&
+      GetTickCount64() - g_phoneKeepAt <= 1000 &&
+      !memcmp(view, g_phoneView, sizeof g_phoneView)) {
+    g_phoneKeepAt = GetTickCount64();
     return g_phoneTex;
+  }
   const float ox = view[0], oy = view[1], oz = view[2], angle = view[3];
   const float tilt = view[4] < 0.f ? 0.f : (view[4] > 1.1f ? 1.1f : view[4]);
   const float dist = view[5] < 20.f ? 20.f : (view[5] > 3000.f ? 3000.f : view[5]);
@@ -4248,11 +4266,13 @@ IDirect3DTexture9 *RenderPhoneMap(const float *view, UINT w, UINT h) {
   const float reach = std::min(extent + (ahead - extent) * .5f, kPhoneReach);
   const int minx = (int)floorf((cx - reach) / kTile), maxx = (int)floorf((cx + reach) / kTile);
   const int miny = (int)floorf((cy - reach) / kTile), maxy = (int)floorf((cy + reach) / kTile);
-  g_phoneKeep[0] = minx - 1;
-  g_phoneKeep[1] = maxx + 1;
-  g_phoneKeep[2] = miny - 1;
-  g_phoneKeep[3] = maxy + 1;
+  g_phoneKeep[0] = minx;
+  g_phoneKeep[1] = maxx;
+  g_phoneKeep[2] = miny;
+  g_phoneKeep[3] = maxy;
   g_phoneKeepAt = GetTickCount64();
+  // Evict before allocation: a single detailed tile can occupy tens of MB.
+  Retire(g_lastMinX, g_lastMaxX, g_lastMinY, g_lastMaxY);
   std::vector<std::pair<float, std::pair<int, int>>> order;
   for (int ty = miny; ty <= maxy; ty++)
     for (int tx = minx; tx <= maxx; tx++) {
@@ -4268,8 +4288,16 @@ IDirect3DTexture9 *RenderPhoneMap(const float *view, UINT w, UINT h) {
         complete = false;
         continue;
       }
+      if (!g_tiles.count({tx, ty})) {
+        MEMORYSTATUSEX memory{};
+        memory.dwLength = sizeof memory;
+        if (GlobalMemoryStatusEx(&memory) && memory.ullAvailVirtual < 256ull * 1024 * 1024) {
+          complete = false;
+          continue;
+        }
+      }
       Tile *t = Load(tx, ty);
-      if (!t) continue;
+      if (!t) { if (!g_tiles.count({tx, ty})) complete = false; continue; }
       g_iso->SetTexture(0, t->tex);
       g_iso->SetStreamSource(0, t->vb, 0, sizeof(Vertex));
       for (auto *group : t->groups) {
@@ -4312,13 +4340,6 @@ IDirect3DTexture9 *RenderPhoneMap(const float *view, UINT w, UINT h) {
   ok = ok && SUCCEEDED(g_iso->GetRenderTargetData(g_rt, g_read));
   D3DVIEWPORT9 full{0, 0, g_capW, g_capH, 0, 1};
   g_iso->SetViewport(&full);
-  // Browsing far afield fills the cache; let go of what neither the radar
-  // nor this view is near once it has grown.
-  if (g_tiles.size() > 96) {
-    const int lx = minx < g_lastMinX ? minx : g_lastMinX, hx = maxx > g_lastMaxX ? maxx : g_lastMaxX;
-    const int ly = miny < g_lastMinY ? miny : g_lastMinY, hy = maxy > g_lastMaxY ? maxy : g_lastMaxY;
-    Retire(lx - 1, hx + 1, ly - 1, hy + 1);
-  }
   if (!ok) return nullptr;
   D3DLOCKED_RECT src{}, dst{};
   if (FAILED(g_read->LockRect(&src, nullptr, D3DLOCK_READONLY))) return nullptr;
