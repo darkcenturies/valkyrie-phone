@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <array>
 #include <functional>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <optional>
@@ -22,6 +23,7 @@
 
 #include "arcade.h"
 #include "app_icon.h"
+#include "weapon_type.h"
 #include "bundle.h"
 #include "config.h"
 #include "game.h"
@@ -73,7 +75,6 @@ constexpr uint16_t kTaskUseMobilePhone = 0x0729;
 // made from (the mission phone task puts the same model in his right hand).
 constexpr uintptr_t kSetCurrentWeapon = 0x5E61F0;   // CPed::SetCurrentWeapon(int slot)
 constexpr uintptr_t kRequestModel = 0x4087E0;
-constexpr uintptr_t kLoadAllRequestedModels = 0x40EA10;
 constexpr uintptr_t kSetModelIsDeletable = 0x409C10;
 constexpr int kCellphoneModel = 330;
 
@@ -5064,36 +5065,11 @@ void CameraBeforeFrame() {
 
 // After CGame::Process: the picture's progress, and the lens handed to the
 // viewfinder for this frame's render.
-// The world seen from the phone, for the handset to mirror: while the phone
-// is up (and the Camera app is not using the same render), the second
-// render looks from where the phone is in CJ's hands back toward the
-// camera - what a mirror held there would show - and the lighting shader
-// reflects it in the glass and the steel.
-bool g_reflecting = false;
-
 void UpdateReflection() {
-    g_reflecting = false;
-    const uintptr_t ped = PlayerPed();
-    game::VehicleState vehicle{};
-    if (!ped || !config::Get().reflections || !g.out || g.slide < 0.5f || !PlayerCanUsePhone() ||
-        game::PlayerVehicleState(vehicle)) {
-        viewfinder::Update(false);
-        return;
-    }
-    // The phone on the screen faces the viewer, so its glass shows what is
-    // behind the viewer: the world at the game's camera, looking straight
-    // back from it - which turns as the camera does.
-    const float* m = reinterpret_cast<const float*>(0xB6F028 + 0x974);  // TheCamera's matrix
-    const float* cam = m + 12;                                           // its position
-    viewfinder::Aim({cam[0], cam[1], cam[2]}, {cam[0] - m[4], cam[1] - m[5], cam[2] - m[6]});
-    // Every frame, as far as the game draws: a mirror switched off and on
-    // between frames makes the game's own picture flicker (its trees fade on
-    // a per-frame count, and it frees the mirror's picture in between), and
-    // the render's far plane is also the one the game's own draw list is
-    // cut to.
-    viewfinder::Reflection(1, 0.0f);
-    viewfinder::Update(true);
-    g_reflecting = true;
+    // Home-screen reflections use the completed game frame. Borrowing the
+    // mirror pass changes world visibility/LOD lists and third-party pipelines.
+    // Only the Camera app is allowed to activate the separate viewfinder.
+    viewfinder::Update(false);
 }
 
 void UpdateCamera() {
@@ -5102,7 +5078,6 @@ void UpdateCamera() {
         return;
     }
     // The mirror render is the viewfinder's now: nothing reflects it.
-    g_reflecting = false;
     const uintptr_t ped = PlayerPed();
     game::VehicleState vehicle{};
     if (!ped || !PlayerCanUsePhone() || game::PlayerVehicleState(vehicle) || !g.out || g.call.active ||
@@ -6766,26 +6741,25 @@ void PlayAlert(const std::string& tone, ULONGLONG buzz) {
 //
 // With the Valkyrie Phone modloader folder in, and its line in fastman92's
 // weapon type config, the phone is a weapon of the game's own (VALKYRIEPHONE,
-// model 23900, the detonator's slot): the game scrolls to it and away,
+// model 19990, the detonator's slot): the game scrolls to it and away,
 // draws it in CJ's left hand. Selected, the phone comes
 // out; another weapon selected, it goes away; P selects it. Without them the
 // phone holds itself, as HoldPhone does below.
-constexpr int kPhoneWeaponModel = 23900;
+constexpr int kPhoneWeaponModel = 19990;
 constexpr int kPhoneWeaponSlot = 12;
 constexpr uintptr_t kGetWeaponInfo = 0x743C60;  // CWeaponInfo::GetWeaponInfo(type, skill)
 constexpr uintptr_t kGiveWeapon = 0x5E6080;     // CPed::GiveWeapon(type, ammo, bool)
 constexpr size_t kPedWeapons = 0x5A0, kWeaponSize = 0x1C;  // CPed::m_aWeapons[13]
 
-// The weapon type the game gave the phone, found by its model once the
-// weapon data is loaded; -1 when there is none.
 // A model the phone needs, loaded now only if the game does not have it
 // already: loading everything requested at once makes the game drop the
 // distant scenery (LODs) for a moment to make room.
-void EnsureModel(int id) {
-    if (phone_model::InMemory(id)) return;
+bool EnsureModel(int id) {
+    if (phone_model::InMemory(id)) return true;
     reinterpret_cast<void(__cdecl*)(int, int)>(kRequestModel)(id, 0x8);
-    reinterpret_cast<void(__cdecl*)(bool)>(kLoadAllRequestedModels)(false);
-    logfile::Line("phone: model %d was not in memory - loaded it", id);
+    // Let normal streaming load it. Flushing the entire request queue here
+    // can evict scenery and vegetation when the handset is opened.
+    return false;
 }
 
 int PhoneWeaponType() {
@@ -6794,12 +6768,16 @@ int PhoneWeaponType() {
     // Not until the game has read its weapon data.
     if (*reinterpret_cast<const bool*>(kGameNotLoaded)) return -1;
     type = -1;
-    auto info = reinterpret_cast<const uint8_t*(__cdecl*)(int, int)>(kGetWeaponInfo);
-    for (int t = 1; t < 512; ++t) {
-        const uint8_t* w = info(t, 1);
-        if (w && *reinterpret_cast<const int*>(w + 0xC) == kPhoneWeaponModel) {
-            type = t;
-            break;
+    const std::string limits = g_gameDir + "fastman92limitAdjuster_GTASA.ini";
+    if (GetModuleHandleA("$fastman92limitAdjuster.asi") &&
+        GetPrivateProfileIntA("WEAPON LIMITS", "Enable weapon type loader", 0, limits.c_str())) {
+        const int limit = GetPrivateProfileIntA("WEAPON LIMITS", "Weapon type loader, number of type IDs", 70, limits.c_str());
+        std::ifstream file(g_gameDir + "data\\gtasa_weapon_config.dat");
+        const int candidate = phone_weapon::FindType(file, limit);
+        if (candidate >= 0) {
+            auto info = reinterpret_cast<const uint8_t*(__cdecl*)(int, int)>(kGetWeaponInfo);
+            const uint8_t* w = info(candidate, 1);
+            if (w && *reinterpret_cast<const int*>(w + 0xC) == kPhoneWeaponModel) type = candidate;
         }
     }
     logfile::Line(type > 0 ? "phone: the phone is a weapon (type %d)" : "phone: no phone weapon - it holds itself",
@@ -6819,7 +6797,7 @@ void WieldPhone(uintptr_t ped, int type) {
     // His phone is always on him: given back whenever its slot is empty (a
     // detonator, arrest or death having taken it).
     if (WeaponInSlot(ped, kPhoneWeaponSlot) == 0) {
-        EnsureModel(kPhoneWeaponModel);
+        if (!EnsureModel(kPhoneWeaponModel)) return;
         reinterpret_cast<void(__thiscall*)(uintptr_t, int, unsigned, bool)>(kGiveWeapon)(ped, type, 1, false);
     }
     if (WeaponInSlot(ped, kPhoneWeaponSlot) != type) {
@@ -6883,7 +6861,7 @@ void HoldPhone() {
     auto fists = [&] { reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, 0); };
 
     if (want && !g.holding) {
-        EnsureModel(kCellphoneModel);
+        if (!EnsureModel(kCellphoneModel)) return;
         // This phone's own model, not the game's (phone_model.h).
         phone_model::Use(true);
         g.holsteredSlot = slot();
@@ -7007,29 +6985,14 @@ IDirect3DTexture9* DeviceCopyOf(uintptr_t tex, const std::string& name) {
 
 IDirect3DTexture9* DeviceCopy(const char* name) { return DeviceCopyOf(ui::Tex(name), name); }
 
-// The live reflection, when the world is being drawn for it: its Direct3D
-// texture is had by letting RenderWare bind it to a spare stage
-// (RwD3D9SetTexture) and reading that back, then unbinding it the same way
-// so RenderWare's own record of the stage stays true. Held; the caller
-// releases it.
+// The completed game frame, captured before drawing the phone. No mirror
+// camera or RenderWare texture bindings are changed. The caller releases it.
 IDirect3DTexture9* LiveMirror(IDirect3DDevice9* device) {
-    if (false && !g.camera.on && config::Get().reflections && g_cameraPreviewReady && g_cameraPreview) {
+    if (device && !g.camera.on && config::Get().reflections && g_cameraPreviewReady && g_cameraPreview) {
         g_cameraPreview->AddRef();
         return g_cameraPreview;
     }
-    if (!g_reflecting || !device) return nullptr;
-    const uintptr_t mirror = viewfinder::Texture();
-    if (!mirror) return nullptr;
-    auto bind = reinterpret_cast<int(__cdecl*)(uintptr_t, unsigned)>(0x7FDE70);
-    bind(mirror, 7);
-    IDirect3DBaseTexture9* base = nullptr;
-    IDirect3DTexture9* live = nullptr;
-    if (SUCCEEDED(device->GetTexture(7, &base)) && base) {
-        if (base->GetType() == D3DRTYPE_TEXTURE) live = static_cast<IDirect3DTexture9*>(base);
-        else base->Release();
-    }
-    bind(0, 7);
-    return live;
+    return nullptr;
 }
 
 // --- The phone as its 3D model ------------------------------------------------
@@ -7303,27 +7266,7 @@ bool LightHandset(bool glassOnly, float x, float y, float w, float h, const Ligh
     IDirect3DTexture9* normals = DeviceCopy(BodyArt("phone_normal"));
     IDirect3DTexture9* material = DeviceCopy(BodyArt("phone_material"));
     IDirect3DTexture9* env = DeviceCopy("phone_env");
-    // The live reflection, when the world is being drawn for it: its
-    // Direct3D texture is had by letting RenderWare bind it to a spare stage
-    // (RwD3D9SetTexture) and reading that back, then unbinding it the same
-    // way so RenderWare's own record of the stage stays true.
-    IDirect3DTexture9* live = nullptr;
-    if (g_reflecting && device) {
-        if (const uintptr_t mirror = viewfinder::Texture()) {
-            auto bind = reinterpret_cast<int(__cdecl*)(uintptr_t, unsigned)>(0x7FDE70);
-            bind(mirror, 7);
-            IDirect3DBaseTexture9* base = nullptr;
-            if (SUCCEEDED(device->GetTexture(7, &base)) && base) {
-                if (base->GetType() == D3DRTYPE_TEXTURE) live = static_cast<IDirect3DTexture9*>(base);
-                else base->Release();
-            }
-            bind(0, 7);
-        }
-    }
-    if (false && !g.camera.on && config::Get().reflections && g_cameraPreviewReady && g_cameraPreview) {
-        live = g_cameraPreview;
-        live->AddRef();
-    }
+    IDirect3DTexture9* live = LiveMirror(device);
     if (live) env = live;
     struct Holder {
         IDirect3DTexture9* t;
@@ -8374,7 +8317,7 @@ void Draw() {
         if (g.focused) Lower();
         return;
     }
-    if (false && g.out && (g.camera.on || config::Get().reflections)) CaptureCameraPreview();
+    if (g.out && !g.camera.on && config::Get().reflections) CaptureCameraPreview();
     else g_cameraPreviewReady = false;
     g.drawnFrame = g.frame;
     g.drawnSinceUp = true;
