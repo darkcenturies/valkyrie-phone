@@ -16,7 +16,7 @@ foreach ($asset in $manifest.assets) {
         throw "Content checksum failed: $($asset.name)"
     }
 }
-$tiles = Join-Path $Output 'Valkyrie-radar-tiles'
+$tiles = Join-Path $Output 'valkyrie-radar-tiles'
 New-Item -ItemType Directory -Force -Path $tiles | Out-Null
 $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
 & $sevenZip x (Join-Path $Cache 'gta-sa-map-tiles.7z') "-o$tiles" -y -bsp0 -bso0
@@ -31,9 +31,9 @@ foreach ($tile in $manifest.tiles) {
         throw "Map tile validation failed: $($tile.name)"
     }
 }
-$optional = Join-Path $Output 'Optional - phone as a weapon'
+$optional = Join-Path $Output 'Optional/Phone as a weapon'
 $gameFiles = Join-Path $optional 'Copy into game folder'
-$weapon = Join-Path $gameFiles 'modloader/Valkyrie Phone'
+$weapon = Join-Path $gameFiles 'modloader/valkyrie phone'
 & (Join-Path $PSScriptRoot 'make-phone-weapon.ps1') -Output $weapon
 if (-not (Test-Path -LiteralPath (Join-Path $weapon 'valkyriephone.txd'))) {
     throw 'Phone weapon generation failed.'
@@ -41,47 +41,81 @@ if (-not (Test-Path -LiteralPath (Join-Path $weapon 'valkyriephone.txd'))) {
 New-Item -ItemType Directory -Force -Path (Join-Path $gameFiles 'data') | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'phone-weapon-config/gtasa_weapon_config.dat') -Destination (Join-Path $gameFiles 'data')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'phone-weapon-config/fastman92limitAdjuster_GTASA.ini') -Destination $gameFiles
-# Modloader consumes these data lines from the readme; keep them when simplifying setup.
+# This TXT is data consumed by Modloader, not a second install readme.
+Remove-Item -LiteralPath (Join-Path $weapon 'Valkyrie Phone.txt')
 $weaponLines = @(
-    'VALKYRIE PHONE - Requires Modloader 0.3.10 and fastman92 limit adjuster 7.6.',
     'IDE DATA\VALKYRIE-PHONE.IDE',
     "$([char]0xA3) VALKYRIEPHONE            MELEE 10.0  1.6  19990 -1  12 FLOWERS        1  1    null"
 )
-[IO.File]::WriteAllLines((Join-Path $weapon 'Valkyrie Phone.txt'), [string[]]$weaponLines, [Text.Encoding]::GetEncoding(28591))
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'phone-content.json') -Destination $Output
-Set-Content -LiteralPath (Join-Path $optional 'README.txt') -Encoding ASCII -Value @'
-OPTIONAL PHONE AS A WEAPON - GTA SA 1.0 US
+[IO.File]::WriteAllLines((Join-Path $weapon 'valkyrie phone.txt'), [string[]]$weaponLines, [Text.Encoding]::GetEncoding(28591))
+$builder = Join-Path $Output 'Optional'
+New-Item -ItemType Directory -Force -Path $builder | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build-phone-map.ps1') -Destination $builder
+Set-Content -LiteralPath (Join-Path $Output 'README.md') -Encoding ASCII -Value @'
+# valkyrie phone for GTA San Andreas 1.0 US
 
-REQUIRES: Modloader 0.3.10 and fastman92 limit adjuster 7.6, already installed.
-Downloads: https://github.com/thelink2012/modloader/releases/tag/v0.3.10
-           https://www.fastman92.com/fastman92-limit-adjuster/
+## Install
 
-Close the game. Back up your existing fastman92limitAdjuster_GTASA.ini and
-data/gtasa_weapon_config.dat. Copy everything inside 'Copy into game folder'
-into the folder containing gta_sa.exe, replacing those two configuration files.
-The supplied files already enable the loader and register the phone. No editing
-is needed on a stock setup. Other custom weapon/limit configs need their own
-settings retained; these replacement files configure stock SA plus the phone.
+Close the game. Copy valkyrie-phone.asi, valkyrie-phone.ini and the
+valkyrie-radar-tiles folder into the game folder containing gta_sa.exe.
+An x86 ASI loader is required. Keep your existing phone INI when upgrading.
+Remove a separate valkyrie-trainer.asi if installed: the phone embeds it.
+
+## Controls and contents
+
+Press P to open/close the phone; use the mouse to navigate.
+Calls, texts, contacts, camera, photos, flashlight, maps, services and trainer
+are included. Settings are in valkyrie-phone.ini. Call Trainer in Contacts
+or press Alt+Z for the trainer. Skin=Keypad selects the optional keypad handset.
+Maps includes 142 generated stock SA tile pairs. Internet includes eight
+authored offline SA pages. External links open the desktop browser; GTA IV
+browser pages are personal local build inputs.
+
+## Optional: Phone as a weapon
+
+Requires Modloader 0.3.10 and fastman92 limit adjuster 7.6, installed separately:
+https://github.com/thelink2012/modloader/releases/tag/v0.3.10
+https://www.fastman92.com/fastman92-limit-adjuster/
+
+Back up fastman92limitAdjuster_GTASA.ini and data/gtasa_weapon_config.dat.
+Copy the contents of Optional/Phone as a weapon/Copy into game folder into
+the game folder, replacing those two configs. The loader and phone entry are
+already configured; no edits are needed on stock SA. Existing custom weapon
+or limit settings must be retained when combining mods.
 
 Scroll to the phone; right click raises/lowers it. Weapon 70, model 19990, slot 12.
-To remove weapon mode, restore both backed-up configs and remove the
-modloader/Valkyrie Phone folder. P-key phone and Maps do not need weapon mode.
-Stock weapon configuration template: fastman92. Dependency binaries not bundled.
-'@
-Set-Content -LiteralPath (Join-Path $Output 'INSTALL.txt') -Encoding ASCII -Value @'
-VALKYRIE PHONE - GTA SAN ANDREAS 1.0 US
+To remove weapon mode, restore both backed-up configs and remove
+modloader/valkyrie phone. The normal P-key phone does not need weapon mode.
 
-Close the game. Copy valkyrie-phone.asi, valkyrie-phone.ini and the included
-Valkyrie-radar-tiles folder into the game folder containing gta_sa.exe.
-An x86 ASI loader is required. Preserve your existing phone INI when upgrading.
-The map contains 142 generated stock SA tile pairs (284 .r3g/.r3a files).
-Custom maps can use the included build-phone-map.ps1 to regenerate their tiles.
-Press P to open the phone. Remove a separate valkyrie-trainer.asi if installed:
-the phone embeds the trainer. Internet contains eight authored offline SA pages.
+## Optional: Map builder
 
-Phone-as-a-weapon is optional: read Optional - phone as a weapon/README.txt.
-Its model and ready-to-copy replacement configs are included. Modloader and
-fastman92 are requirements for weapon mode and are not bundled. GTA IV browser
-pages remain personal local build inputs.
+The supplied stock map is ready to use. For custom maps, install Python 3 and
+run: python -m pip install Pillow numpy
+From Optional, run:
+./build-phone-map.ps1 -GamePath 'C:\Games\GTA San Andreas' -Test
+./build-phone-map.ps1 -GamePath 'C:\Games\GTA San Andreas'
+The full run installs generated tiles into your game. -SkipInstall only builds
+files. The sample run does not install tiles. Several GB free space are needed.
+
+## Help, source and credits
+
+Report issues with valkyrie-phone.log and valkyrie-phone.previous.log:
+https://github.com/darkcenturies/valkyrie-phone
+Source and full controls: https://github.com/darkcenturies/valkyrie-phone
+
+Project licence: LICENSE. Upstream credits/licences: THIRD_PARTY_NOTICES.md
+and the licence texts embedded in the ASI. Stock weapon config template:
+fastman92. Rockstar Games retains ownership of the underlying stock SA map
+geometry/textures. Use your own copy of GTA San Andreas.
 '@
 "Verified $($manifest.tiles.Count) map files and staged ready-to-copy optional weapon configs."
+$allowed = @('valkyrie-phone.asi', 'valkyrie-phone.ini', 'valkyrie-radar-tiles', 'Optional', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md')
+foreach ($item in Get-ChildItem -LiteralPath $Output) {
+    if ($item.Name -cnotin $allowed) { throw "Unexpected install package item: $($item.Name)" }
+}
+if (@(Get-ChildItem -LiteralPath $Output -Recurse -File -Filter 'README*').Count -ne 1) {
+    throw 'Install package must have one README.'
+}
+foreach ($item in Get-ChildItem -LiteralPath $Output -Recurse) {
+    if ($item.Name -cmatch 'Valkyrie') { throw "Mixed-case project name: $($item.Name)" }
+}

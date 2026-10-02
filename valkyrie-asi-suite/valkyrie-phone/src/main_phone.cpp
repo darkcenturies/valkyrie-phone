@@ -14,6 +14,7 @@
 #include "log.h"
 #include "config.h"
 #include "phone.h"
+#include "scene_capture.h"
 #include "radar3d.h"
 #include "radar_start.h"
 #include "version.h"
@@ -74,6 +75,9 @@ DWORD WINAPI Start(LPVOID) {
     if (!game::HookHudDraw(&phone::Draw)) {
         logfile::Line("phone: HUD hook unavailable - standing down");
         return 0;
+    }
+    if (!scene_capture::Register(&phone::CaptureScene)) {
+        logfile::Line("phone: pre-HUD scene hook unavailable - live reflections disabled");
     }
     return 0;
 }

@@ -37,7 +37,7 @@ struct Section {
 
 const Section kSections[] = {
     {"Phone",
-     "; Valkyrie Phone. Everything here can be changed; the phone reads this file\r\n"
+     "; valkyrie phone. Everything here can be changed; the phone reads this file\r\n"
      "; each time the game starts. Take a section out and the phone uses what it\r\n"
      "; ships with. Lines starting with ; are notes.\r\n"
      "\r\n"
@@ -129,7 +129,7 @@ const Section kSections[] = {
      "Signal=1\r\n"
      "; The game's subtitles for what is said on a call (it is on the phone too).\r\n"
      "Subtitles=0\r\n"
-     "; The Maps app: San Andreas in 3D, drawn from the Valkyrie-radar-tiles folder\r\n"
+     "; The Maps app: San Andreas in 3D, drawn from the valkyrie-radar-tiles folder\r\n"
      "; beside the game. 0 leaves the app off the phone and draws nothing for it.\r\n"
      "Maps=1\r\n"},
     {"Calendar",

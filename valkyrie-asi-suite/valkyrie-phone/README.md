@@ -1,4 +1,4 @@
-# Valkyrie Phone
+# valkyrie Phone
 
 `valkyrie-phone.asi` is the SP-RP server's phone rewritten for single player.
 It is the iFruit, GTA V's phone, laid out the way the first iPhone it copies
@@ -51,7 +51,7 @@ already gives every player its own phone.
 
 ## Keypad skin
 
-Set `Skin=Keypad` in `[Phone]` for the optional Valkyrie keypad handset.
+Set `Skin=Keypad` in `[Phone]` for the optional valkyrie keypad handset.
 The default remains iFruit. Both use GTA San Andreas contacts and services.
 
 
@@ -125,16 +125,11 @@ button, the silver mark). The three are drawn at twice the size the handset
 is ever shown at and given every mip level, so its edges stay smooth at any
 resolution.
 
-Every glossy part also mirrors the world around it: while the phone is up
-the game draws the world a second time, from where the phone is in CJ's
-left hand looking back toward the camera - mostly CJ himself, as a phone
-held up in front of him would show -
-through the same mirror renderer the Camera app uses (see "The
-viewfinder"), and the shader reflects that in the glass and the steel, bent
-by each part's shape; a rougher part sees it blurred toward the ambient
-light. It costs what a mirror in the game costs, and real mirrors in the
-room go blank while the phone is up. `[Model] Reflections=0` mirrors a plain
-studio picture (`phone_env`) instead, turned with the camera.
+Glossy parts reflect a copy of the completed world frame captured before the
+2D/HUD pass, so the radar, HUD text and phone itself do not appear in the glass.
+This does not add a second world render or change the game's mirror camera,
+lighting or streaming. Only the Camera app uses the separate lens view.
+`[Model] Reflections=0` uses the studio picture (`phone_env`) instead.
 
 The screen sits under the glass as the original iPhone's does: the display,
 a hair of air, then the glass, printed black round the opening. A second
@@ -190,7 +185,7 @@ because there are none:
     where you stood. Not in a vehicle and not during a mission.
   - **\*#87246#** (\*#TRAIN#) opens valkyrie-trainer's menu, as Alt+Z does,
     when the trainer is installed; the phone goes away first so the two do
-    not fight over the mouse. A trainer that exports `ValkyrieTrainerOpen` is
+    not fight over the mouse. A trainer that exports `valkyrieTrainerOpen` is
     asked directly; an older one is sent Alt+Z. Change it with `[Services] Trainer=`.
   - Any other number "can't be reached", as a number with no player behind it
     is on the server.
@@ -270,7 +265,7 @@ because there are none:
   minutes, or Never - left alone the screen dims ten seconds before, then
   locks to "slide to unlock"; never in a call, the camera, a game or with an
   alarm up); slide to unlock on or off; and About. About is
-  the phone's own "Valkyrie OS" page, laid out as the original iPhone's
+  the phone's own "valkyrie OS" page, laid out as the original iPhone's
   Settings > General > About: the system and its version over a grouped list
   of what is on the phone (your number, which uses the server's rule: 160000
   plus up to 9999, and how many contacts, messages and calls it holds), then
@@ -293,9 +288,9 @@ because there are none:
   the wheel or - and + to zoom from a street out to a few districts, 3D to
   lean the view over the rooftops, Me to go back to following CJ, whose
   arrow is the game's own radar arrow. The radar renders it on its isolated
-  device (`ValkyrieRadarPhoneMap`, beside its HUD panel's own capture,
+  device (`valkyrieRadarPhoneMap`, beside its HUD panel's own capture,
   touching none of that panel's state) and says where CJ falls on it
-  (`ValkyrieRadarPhoneMapProject`). Each tile is a full-detail mesh with a
+  (`valkyrieRadarPhoneMapProject`). Each tile is a full-detail mesh with a
   large texture, so the view reaches only so far from its middle, new tiles
   are read one a frame, the nearest first, and the picture is drawn again
   only when the view moves or a tile arrives. It needs valkyrie-radar with its tile

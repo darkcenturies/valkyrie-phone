@@ -23,7 +23,7 @@ function Stage([string] $Name, [string[]] $Arguments) {
 }
 $index = Join-Path $work 'world-index.json'
 $scene = Join-Path $work 'world-scene.json'
-$tiles = Join-Path $work 'Valkyrie-radar-tiles'
+$tiles = Join-Path $work 'valkyrie-radar-tiles'
 Stage 'Archive index' @((Join-Path $PSScriptRoot 'world3d-index.py'), $game, $index)
 Stage 'World layout' @((Join-Path $PSScriptRoot 'gen-world-scene.py'), $game, $scene)
 $region = @()
@@ -43,7 +43,7 @@ Stage 'Phone tile format' @((Join-Path $PSScriptRoot 'world3d-radar-3dpack.py'),
 if (-not (Get-ChildItem -LiteralPath $tiles -Filter *.r3g -File).Count) { throw 'No radar geometry was generated.' }
 if (-not $SkipInstall -and -not $Test) {
     if (Get-Process gta_sa,gta-sa -ErrorAction SilentlyContinue) { throw 'Map built. Close GTA San Andreas before installing it.' }
-    $target = Join-Path $game 'Valkyrie-radar-tiles'
+    $target = Join-Path $game 'valkyrie-radar-tiles'
     New-Item -ItemType Directory -Force -Path $target | Out-Null
     Get-ChildItem -LiteralPath $tiles -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $target $_.Name) -Force }
     Write-Host "Installed phone map data in $target."
