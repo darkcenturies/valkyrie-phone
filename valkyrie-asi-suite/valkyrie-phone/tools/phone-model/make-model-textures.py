@@ -58,7 +58,7 @@ def screen():
     d.text((W // 2 - 20, 3), "2:56 PM", font=f, fill="white")
     d.rectangle((W - 35, 6, W - 9, 15), outline="white")
     d.rectangle((W - 33, 8, W - 12, 13), fill=(90, 210, 60))
-    apps = [("app_phone", "Phone"), ("app_text", "Text"), ("app_contacts", "Contacts"), ("app_photos", "Camera"),
+    apps = [("app_phone", "Phone"), ("app_text", "Text"), ("app_contacts", "Contacts"), ("app_camera", "Camera"),
             ("app_maps", "Maps"), ("app_internet", "Internet"), ("app_games", "Games"), ("app_clock", "Clock"),
             ("app_calculator", "Calculator"), ("app_notes", "Notes"), ("app_settings", "Settings")]
     cell = W / 4

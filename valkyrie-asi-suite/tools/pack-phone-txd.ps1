@@ -36,8 +36,10 @@ foreach($file in $files) {
     [Runtime.InteropServices.Marshal]::Copy($bits.Scan0,$pixels,0,$pixels.Length)
     $bitmap.UnlockBits($bits);$bitmap.Dispose()
     $stream=[IO.MemoryStream]::new();$writer=[IO.BinaryWriter]::new($stream)
-    # Direct3D 9 native texture: bilinear filter, clamp addressing, 8888 raster.
-    $writer.Write([uint32]9);$writer.Write([uint32]0x3302)
+    # App icons retain their coarse pixel edges; other artwork uses bilinear filtering.
+    # Direct3D 9 native texture, clamp addressing, 8888 raster.
+    $filter = if ($name.StartsWith("app_")) { [uint32]0x3301 } else { [uint32]0x3302 }
+    $writer.Write([uint32]9);$writer.Write($filter)
     $label=[byte[]]::new(32);[Text.Encoding]::ASCII.GetBytes($name).CopyTo($label,0)
     $writer.Write($label);$writer.Write([byte[]]::new(32))
     $writer.Write([uint32]0x0500);$writer.Write([uint32]21)
