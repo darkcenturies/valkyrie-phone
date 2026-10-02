@@ -36,9 +36,12 @@ foreach($file in $files) {
     [Runtime.InteropServices.Marshal]::Copy($bits.Scan0,$pixels,0,$pixels.Length)
     $bitmap.UnlockBits($bits);$bitmap.Dispose()
     $stream=[IO.MemoryStream]::new();$writer=[IO.BinaryWriter]::new($stream)
-    # App icons retain their coarse pixel edges; other artwork uses bilinear filtering.
+    # UI artwork retains its coarse pixel edges; handset and photo artwork stay bilinear.
     # Direct3D 9 native texture, clamp addressing, 8888 raster.
-    $filter = if ($name.StartsWith("app_")) { [uint32]0x3301 } else { [uint32]0x3302 }
+    $pixelArt = $name -match '^(app_|g_|w_|game_)' -or
+        $name -in @('cam_shutter', 'disc', 'clock_face', 'glow') -or
+        ($name.StartsWith('sm_') -and $name -notin @('sm_body', 'sm_back', 'sm_boot', 'sm_phone_normal', 'sm_phone_material'))
+    $filter = if ($pixelArt) { [uint32]0x3301 } else { [uint32]0x3302 }
     $writer.Write([uint32]9);$writer.Write($filter)
     $label=[byte[]]::new(32);[Text.Encoding]::ASCII.GetBytes($name).CopyTo($label,0)
     $writer.Write($label);$writer.Write([byte[]]::new(32))

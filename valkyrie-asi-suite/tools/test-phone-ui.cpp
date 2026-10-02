@@ -3,10 +3,13 @@
 #include "app_icon.h"
 #include <cassert>
 #include <cstdio>
+#include <vector>
 
 namespace {
 int lookups = 0, draws = 0;
 bool available = false;
+struct Band { float top, bottom; uint32_t colour; };
+std::vector<Band> bands;
 }
 namespace sprite {
 uintptr_t Find(int, const char*) { ++lookups; return available ? 42 : 0; }
@@ -15,7 +18,10 @@ void Draw(uintptr_t texture, float, float, float, float, uint32_t) {
     ++draws;
 }
 void Quad(uintptr_t, Corner, Corner, Corner, Corner, uint32_t) { assert(false); }
-void Gradient(float, float, float, float, uint32_t, uint32_t) { assert(false); }
+void Gradient(float, float top, float, float bottom, uint32_t a, uint32_t b) {
+    assert(a == b);
+    bands.push_back({top, bottom, a});
+}
 void Text(float, float, const char*, const TextStyle&) { assert(false); }
 float Width(const char*, const TextStyle&) { assert(false); return 0; }
 std::string Fit(const char*, float, const TextStyle&) { assert(false); return {}; }
@@ -38,5 +44,17 @@ int main() {
     assert(lookups == 2 && draws == 1);
     assert(ui::GameImage(1, "radar_centre", 0, 0, 32, 32));
     assert(lookups == 2 && draws == 2);
+    ui::Gradient(0, 0, 40, 40, 0xFF000000, 0xFFFFFFFF);
+    assert(bands.size() == 4 && bands[0].colour == 0xFF000000 && bands[3].colour == 0xFFFFFFFF);
+    bands.clear();
+    ui::Clip(12, 28);
+    ui::Gradient(0, 0, 40, 40, 0xFF000000, 0xFFFFFFFF);
+    assert(bands.size() == 2);
+    assert(bands[0].top == 12 && bands[0].bottom == 20 && bands[0].colour == 0xFF555555);
+    assert(bands[1].top == 20 && bands[1].bottom == 28 && bands[1].colour == 0xFFAAAAAA);
+    bands.clear();
+    ui::NoClip();
+    ui::Fill(0, 0, 40, 40, 0xFF112233);
+    assert(bands.size() == 1 && bands[0].colour == 0xFF112233);
     puts("PASS: HUD icons recover after a failed first lookup and successful results are cached");
 }

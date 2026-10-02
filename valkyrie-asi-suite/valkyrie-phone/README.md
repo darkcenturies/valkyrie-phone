@@ -13,7 +13,9 @@ Clock, Alarm, Stopwatch and Timer. It is drawn in San Andreas' own style: a heav
 like the HUD art, the subtitle font with its black edge, black help-box
 panels, and icons drawn the way the game's radar icons are (16 pixels, hard
 edges, a thick black outline, hard-banded shading and grain). Camera and Photos
-have distinct bundled artwork. Settings retains GTA's original 16-pixel
+have distinct bundled artwork. Toolbar, call-control, weather and game icons,
+the camera buttons, and the clock dial share the same 16-pixel artwork.
+Panels use stepped shading and controls have heavier borders. Settings retains GTA's original 16-pixel
 radar_modGarage wrench. It and the cursor are the game's own,
 loaded from the player's `models` folder.
 

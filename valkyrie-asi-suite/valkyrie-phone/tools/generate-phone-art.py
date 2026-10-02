@@ -8,7 +8,7 @@ pixels square, hard stepped edges, a thick black outline, flat saturated
 colour in a few hard bands, a white glint and a little grain.
 
 Where the game already has the right picture, the plugin loads the game's own
-at runtime instead of drawing one here: the camera and spanner radar icons
+at runtime instead of drawing one here: the spanner radar icon
 (models/hud.txd) and the mouse cursor (models/fronten_pc.txd). The ones drawn
 here for those are only fallbacks. What SP-RP made for its phone is reused as
 it is - the 27 wallpapers, the battery and the contact glyph - read from
@@ -32,13 +32,14 @@ ASSETS = os.path.join(HERE, "..", "assets")
 OUT = os.path.join(ASSETS, "generated")
 SS = 4  # supersampling factor
 parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--ui-only', action='store_true', help='Regenerate icons and UI controls without touching handset or wallpapers.')
 parser.add_argument('--apps-only', action='store_true', help='Regenerate only home-screen app icons.')
 args = parser.parse_args()
 
 # Regenerate the base artwork without deleting independently generated skins.
 os.makedirs(OUT, exist_ok=True)
 for old in os.listdir(OUT):
-    if not args.apps_only and not old.startswith("sm_"):
+    if not (args.apps_only or args.ui_only) and not old.startswith("sm_"):
         os.remove(os.path.join(OUT, old))
 
 BLACK = (0, 0, 0, 255)
@@ -331,8 +332,7 @@ def radar_icon(shape, fill, name, extra=None):
     hard white glint; and a little grain, as their compression leaves."""
     import random
     rng = random.Random(name)
-    app = name.startswith('app_')
-    pixels = 16 if app else RADAR
+    pixels = 16  # Shared by app, toolbar, weather and game glyphs.
     mask = shape.getchannel("A").point(lambda v: 255 if v > 100 else 0)
     base = fill[:3]
     light = tuple(min(255, int(c * 1.25 + 40)) for c in base)
@@ -354,7 +354,7 @@ def radar_icon(shape, fill, name, extra=None):
     bb = mask.getbbox()
     if bb:
         crop = img.crop(bb)
-        f = IS * (0.70 if app else 0.8) / max(crop.size)
+        f = IS * 0.70 / max(crop.size)
         crop = crop.resize((max(1, int(crop.width * f)), max(1, int(crop.height * f))), Image.LANCZOS)
         img = Image.new("RGBA", (IS, IS), (0, 0, 0, 0))
         img.alpha_composite(crop, ((IS - crop.width) // 2, (IS - crop.height) // 2))
@@ -365,8 +365,8 @@ def radar_icon(shape, fill, name, extra=None):
     rim = ImageChops.subtract(hard, inner)
     rim_colour = tuple(int(c * 0.4) for c in base) + (255,)
     out = Image.new("RGBA", (pixels, pixels), (0, 0, 0, 0))
-    # App outlines are two pixels wide; other glyphs retain four.
-    out.alpha_composite(fill_mask(hard.filter(ImageFilter.MaxFilter(5 if app else 9)), BLACK))
+    # All UI icons use the same two-pixel black outline.
+    out.alpha_composite(fill_mask(hard.filter(ImageFilter.MaxFilter(5)), BLACK))
     body = small.copy()
     body.putalpha(hard)
     out.alpha_composite(body)
@@ -376,7 +376,7 @@ def radar_icon(shape, fill, name, extra=None):
     if bb:
         gx, gy = bb[0] + (bb[2] - bb[0]) * 0.22, bb[1] + (bb[3] - bb[1]) * 0.18
         glint = Image.new("L", (pixels, pixels), 0)
-        extent = 0.75 if app else 3
+        extent = 0.75
         ImageDraw.Draw(glint).ellipse((gx - extent, gy - extent * 0.5, gx + extent, gy + extent * 0.5), fill=255)
         glint = ImageChops.multiply(glint, inner)
         out.alpha_composite(fill_mask(glint, (255, 255, 255, 230)))
@@ -965,24 +965,38 @@ def x_flip(img, mask):
     d.polygon([(x2 - a, y2 + a * 0.2), (x2 + a, y2 + a * 0.2), (x2, y2 - a)], fill=BLACK)
 
 
+def pixel_control(img, name):
+    """Native control geometry sampled onto the shared 16-pixel grid."""
+    img = img.resize((16, 16), Image.Resampling.BOX)
+    img.putalpha(img.getchannel("A").point(lambda value: 255 if value > 110 else 0))
+    img.save(os.path.join(OUT, name + ".png"))
+
+
+def ui_controls():
+    # A stepped selection halo instead of a soft photographic glow.
+    glow = Image.new("RGBA", (16, 16), (255, 255, 255, 0))
+    px = glow.load()
+    for y in range(16):
+        for x in range(16):
+            distance = math.hypot(x - 7.5, y - 7.5) / 7.5
+            alpha = 255 if distance < 0.35 else 144 if distance < 0.65 else 64 if distance < 0.9 else 0
+            px[x, y] = (255, 255, 255, alpha)
+    glow.save(os.path.join(OUT, "glow.png"))
+
+
 def camera_controls():
     """The viewfinder's shutter button, a white disc in a white ring as the
     phone's camera has, and a plain disc for round buttons and thumbnails."""
-    S = 128 * SS
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.ellipse((0, 0, S - 1, S - 1), fill=BLACK)
-    e = S * 0.04
-    d.ellipse((e, e, S - e, S - e), fill=(250, 250, 250, 255))
-    g = S * 0.1
-    d.ellipse((g, g, S - g, S - g), fill=BLACK)
-    i = S * 0.13
-    d.ellipse((i, i, S - i, S - i), fill=(250, 250, 250, 255))
-    finish(img, (128, 128), "cam_shutter")
-
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    ImageDraw.Draw(img).ellipse((0, 0, S - 1, S - 1), fill=(255, 255, 255, 255))
-    finish(img, (128, 128), "disc")
+    d.ellipse((0, 0, 15, 15), fill=BLACK)
+    d.ellipse((2, 2, 13, 13), fill=(250, 250, 250, 255))
+    d.ellipse((4, 4, 11, 11), fill=BLACK)
+    d.ellipse((5, 5, 10, 10), fill=(250, 250, 250, 255))
+    img.save(os.path.join(OUT, "cam_shutter.png"))
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    ImageDraw.Draw(img).ellipse((0, 0, 15, 15), fill=(255, 255, 255, 255))
+    img.save(os.path.join(OUT, "disc.png"))
 
 
 def glyphs():
@@ -1207,20 +1221,17 @@ def weather_glyphs():
 
 def clock_face():
     """The Clock app's dial: white, black-edged, without hands."""
-    S = 256 * SS
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    c = S / 2
-    d.ellipse((0, 0, S - 1, S - 1), fill=BLACK)
-    fr = S * 0.46
-    d.ellipse((c - fr, c - fr, c + fr, c + fr), fill=(245, 245, 245, 255))
-    for i in range(60):
-        a = math.radians(i * 6)
-        major = i % 5 == 0
-        l0 = fr * (0.78 if major else 0.88)
-        d.line((c + math.cos(a) * l0, c + math.sin(a) * l0, c + math.cos(a) * fr * 0.95,
-                c + math.sin(a) * fr * 0.95), fill=BLACK, width=int(S * (0.018 if major else 0.006)))
-    finish(img, (256, 256), "clock_face")
+    d.ellipse((0, 0, 15, 15), fill=BLACK)
+    d.ellipse((2, 2, 13, 13), fill=(245, 245, 245, 255))
+    for i in range(12):
+        angle = math.radians(i * 30)
+        radius = 4.5
+        x = round(7.5 + math.cos(angle) * radius)
+        y = round(7.5 + math.sin(angle) * radius)
+        d.point((x, y), fill=BLACK)
+    img.save(os.path.join(OUT, "clock_face.png"))
 
 
 def boot_mark():
@@ -1341,6 +1352,12 @@ def brands():
 
 
 if __name__ == "__main__":
+    if args.ui_only:
+        icons()
+        clock_face()
+        ui_controls()
+        print('Wrote 16-pixel app, toolbar, weather, game and control artwork.')
+        raise SystemExit(0)
     if args.apps_only:
         icons(only_apps=True)
         print('Wrote 17 home-screen app icons without touching other artwork.')
@@ -1366,13 +1383,7 @@ if __name__ == "__main__":
     # The shape of a light's reflection, for the sun caught in the glass: a
     # soft round spot, white, fading to nothing at its edge. Where it falls
     # and how bright it is come from the game's sun at run time.
-    glow = Image.new("RGBA", (64, 64), (255, 255, 255, 0))
-    gp = glow.load()
-    for gy in range(64):
-        for gx in range(64):
-            d = math.hypot(gx - 31.5, gy - 31.5) / 31.5
-            gp[gx, gy] = (255, 255, 255, int(255 * max(0.0, 1.0 - d) ** 2.2))
-    glow.save(os.path.join(OUT, "glow.png"))
+    ui_controls()
     # Plain white, for shapes the plugin draws itself (clock hands).
     Image.new("RGBA", (8, 8), (255, 255, 255, 255)).save(os.path.join(OUT, "white.png"))
     wallpapers()
