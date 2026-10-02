@@ -5417,6 +5417,7 @@ void UpdatePose() {
                                       script::Command(kPlayingAnim, {handle, g_pose.anim.name.c_str()}));
     if (ownClip && g_pose.playing && g_pose.seen && !on) {
         StopPose();
+        if (g.call.active) g.call.speaker = true;
         Lower(); // An interrupted entry/shutter/exit must not start the next pose.
         return;
     }
