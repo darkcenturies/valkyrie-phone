@@ -3,6 +3,7 @@ param(
     [string]$Cache
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'phone-content.json') -Raw | ConvertFrom-Json
 if (-not $Cache) { $Cache = Join-Path ([IO.Path]::GetTempPath()) 'valkyrie-phone-content-v1' }
 New-Item -ItemType Directory -Force -Path $Cache, $Output | Out-Null
