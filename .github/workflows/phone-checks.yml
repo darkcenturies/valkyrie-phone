@@ -18,9 +18,12 @@ jobs:
           python -m playwright install chromium
       - name: Verify generated map builder
         run: python valkyrie-asi-suite/tools/make-phone-map-builder.py --check
-      - name: Build optimized x86 phone
+      - name: Build x86 phone with authored offline SA pages
         shell: powershell
         run: ./valkyrie-asi-suite/build.ps1 -Release
+      - name: Verify shipped browser inventory (no GTA IV or archive pages)
+        run: |
+          python -c "import runpy; from pathlib import Path; m=runpy.run_path('valkyrie-asi-suite/valkyrie-phone/tools/iv-web/build-web-pack.py'); pages=m['read_pack']('valkyrie-asi-suite/build/valkyrie-web.dat'); expected={k for k,_,_ in m['sa_pages']()}; assert len(pages)==8 and {p['key'] for p in pages}==expected; print('Ships eight authored SA pages; no GTA IV or archived pages.')"
       - name: Check icon recovery
         shell: powershell
         run: ./valkyrie-asi-suite/tools/test-phone-ui.ps1
@@ -43,6 +46,7 @@ jobs:
           git archive --format=zip --output=build/ci-package/valkyrie-phone-source.zip HEAD
           if ($LASTEXITCODE -ne 0) { throw "Source archive failed." }
           "Source: https://github.com/darkcenturies/valkyrie-phone/commit/$env:GITHUB_SHA" | Set-Content build/ci-package/BUILD.txt
+          "Browser: eight authored offline SA pages; no GTA IV or archived pages. Map tiles and weapon loader are separate." | Add-Content build/ci-package/BUILD.txt
           (Get-FileHash build/ci-package/valkyrie-phone.asi -Algorithm SHA256).Hash | Add-Content build/ci-package/BUILD.txt
       - name: Publish merged build
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

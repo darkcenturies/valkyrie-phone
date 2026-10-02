@@ -21,7 +21,9 @@ param(
     # GTA IV, for the phone's browser: its internet is built from the
     # player's own copy (valkyrie-phone\tools\iv-web). Found through Steam
     # or Rockstar's own registry key when not given.
-    [string] $Gta4Path
+    [string] $Gta4Path,
+    # Optional existing VWEB pack from the player's own local build.
+    [string] $WebPackPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -206,7 +208,18 @@ foreach ($targetSpec in $targets) {
         # Delete build\valkyrie-web.dat to build it again.
         $keptPack = Join-Path $root "valkyrie-phone\assets\web\valkyrie-web.dat"
         $webPack = Join-Path $build "valkyrie-web.dat"
-        if (-not (Test-Path -LiteralPath $webPack)) {
+        if (-not [string]::IsNullOrWhiteSpace($WebPackPath)) {
+            if (-not [string]::IsNullOrWhiteSpace($Gta4Path)) { throw "Choose -WebPackPath or -Gta4Path, not both." }
+            $suppliedPack = (Resolve-Path -LiteralPath $WebPackPath).Path
+            $header = [IO.File]::ReadAllBytes($suppliedPack)
+            if ($header.Length -lt 24 -or [Text.Encoding]::ASCII.GetString($header, 0, 4) -ne "VWEB" -or
+                [BitConverter]::ToUInt32($header, 4) -notin 1,2 -or [BitConverter]::ToUInt32($header, 8) -eq 0) {
+                throw "The supplied browser pack is not a nonempty supported VWEB file."
+            }
+            Write-Host "[build] supplied local browser pack: $([BitConverter]::ToUInt32($header, 8)) pages" -ForegroundColor Green
+            if ($suppliedPack -ne $webPack) { Copy-Item -LiteralPath $suppliedPack -Destination $webPack -Force }
+        }
+        elseif (-not (Test-Path -LiteralPath $webPack) -or -not [string]::IsNullOrWhiteSpace($Gta4Path)) {
             $iv = $Gta4Path
             if ([string]::IsNullOrWhiteSpace($iv)) {
                 $candidates = @()
@@ -222,10 +235,15 @@ foreach ($targetSpec in $targets) {
                 $iv = $candidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ "pc\html") } | Select-Object -First 1
             }
             $ivHtml = if ($iv) { Join-Path $iv "pc\html" } else { $null }
+            if (-not [string]::IsNullOrWhiteSpace($Gta4Path) -and -not (Test-Path -LiteralPath $ivHtml)) {
+                throw "The requested GTA IV install has no pc\html folder: $Gta4Path"
+            }
             if ($ivHtml -and (Test-Path -LiteralPath $ivHtml)) {
                 Write-Host "[build] GTA IV: $iv - building the browser's pages from it, once (a few minutes)" -ForegroundColor Cyan
                 $python = if (Get-Command py -ErrorAction SilentlyContinue) { @("py", "-3") } else { @("python") }
-                $webArgs = @((Join-Path $root "valkyrie-phone\tools\iv-web\build-web-pack.py"), $ivHtml, $webPack, "--with", $keptPack)
+                $webArgs = @((Join-Path $root "valkyrie-phone\tools\iv-web\build-web-pack.py"), $ivHtml, $webPack)
+                if (Test-Path -LiteralPath $keptPack) { $webArgs += @("--with", $keptPack) }
+                else { $webArgs += "--no-archive" }
                 $gxt = Join-Path $iv "pc\text\american.gxt"
                 if (Test-Path -LiteralPath $gxt) { $webArgs += @("--gxt", $gxt) }
                 $pythonArgs = @($python | Select-Object -Skip 1) + $webArgs
@@ -238,6 +256,7 @@ foreach ($targetSpec in $targets) {
                 }
                 if (-not $built -or -not (Test-Path -LiteralPath $webPack)) {
                     Remove-Item -LiteralPath $webPack -Force -ErrorAction SilentlyContinue
+                    if (-not [string]::IsNullOrWhiteSpace($Gta4Path)) { throw "The requested GTA IV pages could not be built; no SA-only replacement was produced." }
                     Write-Host "[build] GTA IV's pages could not be built (it needs Python 3, Pillow, Playwright and Chrome - see valkyrie-phone\README.md); San Andreas' sites only this time" -ForegroundColor Yellow
                 }
             } else {

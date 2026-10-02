@@ -281,13 +281,12 @@ because there are none:
   only when the view moves or a tile arrives. It needs valkyrie-radar with its tile
   set; without it the app says so. An older `valkyrie-phone.ini` is given
   the app once, after Photos (`[Apps] Added=` remembers).
-- **Internet.** GTA IV's websites - all 93 sites and 620 pages the game
-  ships - laid out again for the phone's narrow screen, the way the
-  small-screen browsers of 2007 reflowed desktop pages, so the text reads
-  at the phone's own size. Drag or wheel to scroll, double-tap to zoom in
-  and out, tap links to follow them. An address bar takes typed addresses
-  (`burgershot.net`, `www.craplist.net/jobs.html`), with back, forward, Home
-  (Eyefind, as in GTA IV) and a list of every site.
+- **Internet.** An offline in-game browser with bundled pages. Public Actions
+  builds include eight authored San Andreas pages across six sites. GTA IV
+  pages are optional local content converted from the player's own GTA IV
+  install; see the build instructions below. Drag or wheel to scroll,
+  double-tap to zoom, and tap links to follow them. Back, forward, Home and
+  the site list navigate the pages included in your build.
 
 Contacts, messages, recent calls and settings are saved to
 `valkyrie-phone.dat` in the GTA San Andreas User Files folder, beside the save
@@ -301,58 +300,61 @@ Not done yet: the taxi number, and the machines' sounds.
 
 ## The internet
 
-San Andreas has its own sites, and the phone carries them. The real ones
-Rockstar put up for the game in 2004 - the Epsilon Program, eXsorbeo,
-Cluckin' Bell and Maccer's - are fetched from the Internet Archive's Wayback
-Machine while the page pack is built, on the player's own machine, and are
-never kept in this project. Each is laid out at its own width, cut to its
-own layout and fitted to the phone's screen, to be double-tapped into; their
-links, image-map menus included, lead to the matching pages; Cluckin'
-Bell's all-Flash front page is played by the archive's own Ruffle. A site
-the archive will not give falls back to a page written for this project
-(`tools/sa-web`), as West Coast Rap Legends always does - it was never
-captured. sp-rp.com is written here too, as the ad for the new online
-roleplaying game everybody in San Andreas is playing; its buttons open the
-real sp-rp.com in the player's browser. Without GTA IV the browser opens on
-sp-rp.com. `--no-archive` builds without the download.
+The public Actions download carries **eight authored pages across six sites**:
+Cluckin' Bell (home/menu), Epsilon (home/join), eXsorbeo, Maccer,
+West Coast Rap Legends and sp-rp.com. They come from `tools/sa-web`.
+It includes **no GTA IV pages and no archived Rockstar promotional pages**.
+The app works offline; it is not a general web browser. Links marked external
+open your normal desktop browser when tapped. Home opens sp-rp.com when
+Eyefind is absent.
 
-A ready pack of San Andreas' sites - the real 2004 ones fetched from the
-archive, and the written ones - is kept in `assets/web/valkyrie-web.dat` and
-goes inside the phone's ASI at every build, so building needs neither Python
-nor a download, and nothing is fetched while the game runs. Rebuild it only
-to change what is in it; a pack built into `build\valkyrie-web.dat` is used
-instead of the kept one. GTA IV's pages
-can join them. They are GTA IV's own, so they are not part of
-this project: they are built on the player's machine from their own copy of
-GTA IV, into `valkyrie-web.dat` in the San Andreas folder, San Andreas' own
-sites with them.
+A clean public build creates `build/valkyrie-web.dat` using `--sa-only
+--no-archive`, and embeds it in the ASI. It requires Python, Pillow,
+Playwright and Chrome or Playwright's Chromium. Nothing is fetched while
+playing. A previously generated `build/valkyrie-web.dat` is reused; an optional
+local kept pack under `assets/web` is also supported, but neither pack is
+tracked in this public repository.
 
-```
-pip install pillow playwright
-python tools\iv-web\build-web-pack.py "<GTA IV>\pc\html" ..\build\valkyrie-web.dat --gxt "<GTA IV>\pc\text\american.gxt"
+From the repository root, prepare the page builder and build:
+
+```powershell
+python -m pip install Pillow playwright
+python -m playwright install chromium
+./valkyrie-asi-suite/build.ps1 -Release
 ```
 
-Without GTA IV, San Andreas' own sites alone:
+For **GTA IV websites**, supply your own GTA IV install containing `pc/html`
+and `pc/text/american.gxt`:
 
+```powershell
+./valkyrie-asi-suite/build.ps1 -Release -Gta4Path "C:\Games\Grand Theft Auto IV\GTAIV"
 ```
-python tools\iv-web\build-web-pack.py --sa-only ..\build\valkyrie-web.dat
+
+An explicit `-Gta4Path` rebuilds the page pack, including the authored SA
+pages, even when a previous pack exists. Check the build's page conversion
+messages: explicitly requested GTA IV input must exist and convert successfully,
+or the build fails. This local
+build differs from the public Actions download. GTA IV files and derived
+pages are not committed or distributed by Actions.
+
+To restore a page pack from a previous personal build instead of converting
+GTA IV again, use its existing VWEB file:
+
+```powershell
+./valkyrie-asi-suite/build.ps1 -Release -WebPackPath "C:\PhoneAssets\valkyrie-web.dat"
 ```
 
-It needs Google Chrome, which lays each page out, and takes about two
-minutes. `--gxt` fills in the lines some pages take from GTA IV's text file
-(Eyefind's front page, Craplist, the LCPD database); without it those spaces
-are blank. Pages whose text GTA IV's scripts write at run time (the news
-stories, the e-mail inbox, some blogs) stay blank either way.
+This embeds that supplied local content in your ASI and prints its page count.
+It is a personal build input, not content included in the Actions artifact.
+Use one of `-Gta4Path` or `-WebPackPath`. Neither uploads the input to GitHub.
 
-`tools/iv-web/whm.py` reads GTA IV's `.whm` pages. The format has not been
-published anywhere; its layout is written up at the top of that file. Each
-page is turned back into HTML with every node's stored style, reflowed for a
-320-point screen (layout tables wrap, spacer cells and decorative side
-columns go, pictures shrink to fit, nothing under 13 pixels), laid out by
-Chrome at 1.5 pixels a point, and kept as a 256-colour PNG with the
-rectangles of its links. `--desktop` keeps GTA IV's own 640-wide layout. The
-phone decodes the page being viewed with Windows' own image decoder on a
-thread of its own and draws it as textures.
+`tools/iv-web/whm.py` reads GTA IV's `.whm` pages. The converter reconstructs
+HTML, reflows it for a 320-point screen, and stores page images plus link
+rectangles. `american.gxt` supplies text used by pages such as Eyefind,
+Craplist and the LCPD database. Content generated by GTA IV scripts at runtime,
+such as news stories or inbox messages, may remain blank. `--desktop` retains
+the original desktop layout. The direct pack-builder CLI also offers optional
+archive imports; public Actions always uses `--no-archive`.
 
 ## The viewfinder
 
@@ -414,7 +416,7 @@ after changing a drawing.
 | File | Where |
 | --- | --- |
 | `valkyrie-phone.asi` | game folder - everything the phone needs is inside it (below) |
-| `assets/web/valkyrie-web.dat` | in this project: the web page pack built into the ASI |
+| `build/valkyrie-web.dat` | generated offline page pack embedded in the ASI; not tracked |
 | `valkyrie-phone-model.dff`, `valkyrie-phone-model.txd` | game folder, optional: the model CJ holds (see above); not part of this project |
 | `valkyrie-phone.ini` | game folder, written with every setting and a note on each the first time the phone starts (see below) |
 | `valkyrie-phone.log` | game folder, development builds only |
