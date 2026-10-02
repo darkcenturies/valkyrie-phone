@@ -1,0 +1,19 @@
+name: Phone checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify generated map builder
+        run: python valkyrie-asi-suite/tools/make-phone-map-builder.py --check
+      - name: Build optimized x86 phone
+        shell: powershell
+        run: ./valkyrie-asi-suite/build.ps1 -Release
+      - name: Check icon recovery
+        shell: powershell
+        run: ./valkyrie-asi-suite/tools/test-phone-ui.ps1
