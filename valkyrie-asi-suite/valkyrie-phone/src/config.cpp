@@ -331,17 +331,33 @@ const Section kSections[] = {
      "; always loaded; any other is loaded when needed), and whether it loops\r\n"
      "; (1) or holds its last frame (0).\r\n"
      "; Looking at the phone while it is up:\r\n"
-     "Use=betslp_loop\r\n"
+     "TakeOut=betslp_in\r\n"
+     "TakeOutFile=otb\r\n"
+     "TakeOutLoop=0\r\n"
+     "Use=betslp_lkabt\r\n"
      "UseFile=otb\r\n"
      "UseLoop=1\r\n"
+     "; Typing uses the hand movement only while a field changes.\r\n"
+     "Type=betslp_loop\r\n"
+     "TypeFile=otb\r\n"
+     "TypeLoop=1\r\n"
+     "PutAway=betslp_out\r\n"
+     "PutAwayFile=otb\r\n"
+     "PutAwayLoop=0\r\n"
      "; Holding it up to take a picture:\r\n"
      "Camera=picstnd_in\r\n"
      "CameraFile=camera\r\n"
      "CameraLoop=0\r\n"
-     "; Holding it out for a selfie:\r\n"
-     "Selfie=ARRESTgun\r\n"
-     "SelfieFile=ped\r\n"
+     "; Front camera uses SA's stock photography stance:\r\n"
+     "Selfie=picstnd_in\r\n"
+     "SelfieFile=camera\r\n"
      "SelfieLoop=0\r\n"
+     "Photo=picstnd_take\r\n"
+     "PhotoFile=camera\r\n"
+     "PhotoLoop=0\r\n"
+     "CameraOut=picstnd_out\r\n"
+     "CameraOutFile=camera\r\n"
+     "CameraOutLoop=0\r\n"
      "; Where the phone's lens is in each pose, in metres from CJ's middle:\r\n"
      "; to his right, in front of him, up. Match these to the animations above.\r\n"
      "CameraLens=0.05,0.60,0.65\r\n"
@@ -739,12 +755,29 @@ void Load(const std::string& gameDir) {
         if (a.file.empty()) a.file = "ped";
         return a;
     };
-    c.useAnim = anim("Use", "betslp_loop", "otb", true);
+    c.takeOutAnim = anim("TakeOut", "betslp_in", "otb", false);
+    c.useAnim = anim("Use", "betslp_lkabt", "otb", true);
+    c.typeAnim = anim("Type", "betslp_loop", "otb", true);
+    c.putAwayAnim = anim("PutAway", "betslp_out", "otb", false);
     c.cameraAnim = anim("Camera", "picstnd_in", "camera", false);
     // An older file kept the selfie pose under [Camera].
     const std::string oldSelfie = Read(ini, "Camera", "SelfieAnim", "ARRESTgun");
     const std::string oldSelfieFile = Read(ini, "Camera", "SelfieAnimFile", "ped");
     c.selfieAnim = anim("Selfie", oldSelfie.c_str(), oldSelfieFile.c_str(), false);
+    c.photoAnim = anim("Photo", "picstnd_take", "camera", false);
+    c.cameraOutAnim = anim("CameraOut", "picstnd_out", "camera", false);
+    // Upgrade only the old shipped placeholders; retain independent custom choices.
+    auto upgrade = [&](Anim& a, const char* key, const char* oldName, const char* oldFile, bool oldLoop,
+                       const char* name, const char* file, bool loop) {
+        if (_stricmp(a.name.c_str(), oldName) || _stricmp(a.file.c_str(), oldFile) || a.loop != oldLoop) return;
+        a = Anim{name, file, loop};
+        WritePrivateProfileStringA("Animations", key, name, ini.c_str());
+        const std::string k = key;
+        WritePrivateProfileStringA("Animations", (k + "File").c_str(), file, ini.c_str());
+        WritePrivateProfileStringA("Animations", (k + "Loop").c_str(), loop ? "1" : "0", ini.c_str());
+    };
+    upgrade(c.useAnim, "Use", "betslp_loop", "otb", true, "betslp_lkabt", "otb", true);
+    upgrade(c.selfieAnim, "Selfie", "ARRESTgun", "ped", false, "picstnd_in", "camera", false);
     auto lens = [&](const char* key, Lens fallback) {
         const std::string text = Read(ini, "Animations", key, "");
         Lens l{};

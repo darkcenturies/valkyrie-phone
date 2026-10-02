@@ -222,11 +222,31 @@ because there are none:
   in-game camera does (the menu's "save photos" is switched on for each
   one). With `[Photos] Shape=Portrait` the saved picture is then cut to the
   viewfinder's upright shape.
-- **CJ's poses.** While the phone is up CJ looks at it; for a picture he
-  holds it up, and for a selfie he holds it out. They are the game's own
-  animations, set in `[Animations]`. Lower the phone (right mouse button)
-  and he is free to walk; if he is shoved or knocked down the phone comes
-  down with him.
+- **CJ's phone actions.** GTA SA's stock clips play as complete actions:
+  take out, hold/read, type while a field changes, frame/take/lower a photo,
+  and put away. Calls keep the native `phone_in`, `phone_talk`, `phone_out`
+  sequence, including speaker transitions. Phone poses wait for the return
+  from the ear before starting. Lowering releases input immediately; the
+  held model remains until its outgoing animation finishes. Falls, swimming,
+  vehicle entry and mission tasks cancel phone animations. Cleanup fades
+  only the phone's association, without clearing CJ's other tasks.
+
+  | Action | Stock clip / block |
+  | --- | --- |
+  | Take out | `betslp_in` / `otb` |
+  | Hold/read | `betslp_lkabt` / `otb` |
+  | Type | `betslp_loop` / `otb`, only while editing |
+  | Put away / lower | `betslp_out` / `otb` |
+  | Camera and front camera | `picstnd_in` / `camera`, held after raising |
+  | Take a photo | `picstnd_take` / `camera` |
+  | Lower camera | `picstnd_out` / `camera` |
+
+  SA has no dedicated selfie or smartphone animation. These are its existing
+  ticket-handling and photography clips adapted to the handset; front-camera
+  mode uses the stock photography stance rather than the old arrest pose.
+  No animation files are shipped: clips come from the player's own game.
+  `[Animations]` lets you choose alternatives. Old shipped browsing/selfie
+  defaults upgrade; independent custom choices remain.
 - **Photos.** The Camera Roll (the Gallery folder, newest first, with the
   camera one tap away and pictures thrown into the Windows Recycle Bin) and
   the server's 27 wallpapers, with their SP-RP names.
