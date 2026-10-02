@@ -3,7 +3,7 @@
 The phone is the first iPhone's shape (2007: one big screen, one round home
 button), drawn the way San Andreas draws its own interface art: a heavy black
 outline around flat, lightly shaded colour, like the radar icons and the HUD.
-The app icons are drawn the way the radar icons in models/hud.txd are: 64
+The app icons are drawn the way the radar icons in models/hud.txd are: 16
 pixels square, hard stepped edges, a thick black outline, flat saturated
 colour in a few hard bands, a white glint and a little grain.
 
@@ -320,19 +320,19 @@ ICON = 128
 IS = ICON * SS
 
 
-RADAR = 64  # the game's radar icons are 64 x 64
+RADAR = 64  # Preserve the existing size of non-app glyphs.
 
 
 def radar_icon(shape, fill, name, extra=None):
     """Turn a white-on-transparent shape into an icon drawn the way the game's
-    radar icons are (models/hud.txd): 64 pixels square with hard, stepped
+    radar icons are (models/hud.txd): 16-pixel apps with hard, stepped
     edges; flat saturated colour shaded in a few hard bands, light from the
     top left; a darker rim just inside the edge; a thick black outline; a
     hard white glint; and a little grain, as their compression leaves."""
     import random
     rng = random.Random(name)
     app = name.startswith('app_')
-    pixels = 32 if app else RADAR
+    pixels = 16 if app else RADAR
     mask = shape.getchannel("A").point(lambda v: 255 if v > 100 else 0)
     base = fill[:3]
     light = tuple(min(255, int(c * 1.25 + 40)) for c in base)
@@ -365,8 +365,8 @@ def radar_icon(shape, fill, name, extra=None):
     rim = ImageChops.subtract(hard, inner)
     rim_colour = tuple(int(c * 0.4) for c in base) + (255,)
     out = Image.new("RGBA", (pixels, pixels), (0, 0, 0, 0))
-    # App outlines are six pixels wide at the final size; other glyphs retain four.
-    out.alpha_composite(fill_mask(hard.filter(ImageFilter.MaxFilter(7 if app else 9)), BLACK))
+    # App outlines are two pixels wide; other glyphs retain four.
+    out.alpha_composite(fill_mask(hard.filter(ImageFilter.MaxFilter(5 if app else 9)), BLACK))
     body = small.copy()
     body.putalpha(hard)
     out.alpha_composite(body)
@@ -376,7 +376,7 @@ def radar_icon(shape, fill, name, extra=None):
     if bb:
         gx, gy = bb[0] + (bb[2] - bb[0]) * 0.22, bb[1] + (bb[3] - bb[1]) * 0.18
         glint = Image.new("L", (pixels, pixels), 0)
-        extent = 1.5 if app else 3
+        extent = 0.75 if app else 3
         ImageDraw.Draw(glint).ellipse((gx - extent, gy - extent * 0.5, gx + extent, gy + extent * 0.5), fill=255)
         glint = ImageChops.multiply(glint, inner)
         out.alpha_composite(fill_mask(glint, (255, 255, 255, 230)))
@@ -388,9 +388,6 @@ def radar_icon(shape, fill, name, extra=None):
             if a and (r, g, b) != (0, 0, 0):
                 n = rng.randint(-9, 9)
                 opx[x, y] = (max(0, min(255, r + n)), max(0, min(255, g + n)), max(0, min(255, b + n)), a)
-    if app:
-        # Keep the coarse two-pixel steps of the stock spanner icon.
-        out = out.resize((RADAR, RADAR), Image.Resampling.NEAREST)
     out.save(os.path.join(OUT, name + ".png"))
 
 

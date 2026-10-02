@@ -16,8 +16,7 @@ inline std::string Builtin(const std::string& app) {
 // Other configured artwork remains a user override.
 inline std::string UpgradeDefault(const std::string& app, const std::string& icon) {
     if ((app == "Camera" && icon == "app_photos") ||
-        (app == "Photos" && icon == "hud:radar_1hourphoto") ||
-        (app == "Settings" && icon == "hud:radar_modGarage")) return Builtin(app);
+        (app == "Photos" && icon == "hud:radar_1hourphoto")) return Builtin(app);
     return icon;
 }
 }
