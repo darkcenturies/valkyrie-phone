@@ -57,3 +57,7 @@ references and public research; this repository retains the public Phone source.
 
 The repository contains no game files. Use your own copy of GTA San Andreas.
 Original notices and third-party credits remain in THIRD_PARTY_NOTICES.md.
+
+## Download merged builds
+
+Every successful merge to `main` produces a Windows x86 build in [Actions](https://github.com/darkcenturies/valkyrie-phone/actions). Open the successful main-branch run and download its `valkyrie-phone-gta-sa-1.0-<commit>` artifact. It contains the ASI, default configuration, map-building tools, source archive, licence and notices. Builds are kept for 30 days. Generate map data from your own game; no game data or private symbols are included.
