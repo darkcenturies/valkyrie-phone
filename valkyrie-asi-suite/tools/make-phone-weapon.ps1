@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $phone = Join-Path $root "valkyrie-phone"
-$modelId = 23900       # free under the model ID limit GTA San Andreas sets (24000); above it the game crashes
+$modelId = 19990       # Stock SA has 20000 model-info entries; 23900 is outside that array.
 $name = "valkyriephone"
 
 if (Test-Path -LiteralPath $Output) { Remove-Item -Recurse -Force -LiteralPath $Output }

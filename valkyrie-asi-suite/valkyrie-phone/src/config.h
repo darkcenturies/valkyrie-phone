@@ -56,8 +56,7 @@ struct Config {
     std::string model = "valkyrie-phone-model.dff", modelTextures = "valkyrie-phone-model.txd";
     // How much the model in CJ's hand reflects, 0 matt to 1 mirror-bright.
     float shine = 1.0f;
-    // The phone on screen mirrors the world around it (a second render of
-    // the world while the phone is up, as a mirror in the game costs).
+    // Reflect the current game frame without changing the world's render lists.
     bool reflections = true;
     // How the phone sits in CJ's left hand (phone_model::RenderInLeftHand).
     float handTurn[3] = {180.0f, 0.0f, 0.0f};

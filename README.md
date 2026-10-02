@@ -23,6 +23,12 @@ and [source maintenance](MAINTENANCE.md). Native compilation and isolated tests
 are separate from in-game startup, camera, device-reset and weapon validation.
 The release packages now target GTA San Andreas only.
 
+Opening the handset reflects the current game frame; it does not force a second
+world/mirror render or flush the model streaming queue. Only the Camera app uses
+the separate lens view. Weapon packages use stock-safe model ID 19990. Phone
+weapon discovery reads its explicit loader configuration and validates the ID
+before calling into the game's weapon-info array.
+
 Home-screen apps fall back to their bundled artwork when a custom or HUD icon
 cannot load. HUD icons that become available after the first lookup are retried.
 Builds refuse to package missing built-in app artwork.
