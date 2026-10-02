@@ -9,6 +9,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install page builder
+        run: |
+          python -m pip install Pillow playwright
+          python -m playwright install chromium
       - name: Verify generated map builder
         run: python valkyrie-asi-suite/tools/make-phone-map-builder.py --check
       - name: Build optimized x86 phone
