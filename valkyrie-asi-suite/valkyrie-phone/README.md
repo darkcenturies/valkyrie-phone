@@ -217,31 +217,16 @@ because there are none:
   in-game camera does (the menu's "save photos" is switched on for each
   one). With `[Photos] Shape=Portrait` the saved picture is then cut to the
   viewfinder's upright shape.
-- **CJ's phone actions.** GTA SA's stock clips play as complete actions:
-  take out, hold/read, type while a field changes, frame/take/lower a photo,
-  and put away. Calls keep the native `phone_in`, `phone_talk`, `phone_out`
-  sequence, including speaker transitions. Phone poses wait for the return
-  from the ear before starting. Lowering releases input immediately; the
-  held model remains until its outgoing animation finishes. Falls, swimming,
-  vehicle entry and mission tasks cancel phone animations. Cleanup fades
-  only the phone's association, without clearing CJ's other tasks.
-
-  | Action | Stock clip / block |
-  | --- | --- |
-  | Take out | `betslp_in` / `otb` |
-  | Hold/read | `betslp_lkabt` / `otb` |
-  | Type | `betslp_loop` / `otb`, only while editing |
-  | Put away / lower | `betslp_out` / `otb` |
-  | Camera and front camera | `picstnd_in` / `camera`, held after raising |
-  | Take a photo | `picstnd_take` / `camera` |
-  | Lower camera | `picstnd_out` / `camera` |
-
-  SA has no dedicated selfie or smartphone animation. These are its existing
-  ticket-handling and photography clips adapted to the handset; front-camera
-  mode uses the stock photography stance rather than the old arrest pose.
-  No animation files are shipped: clips come from the player's own game.
-  `[Animations]` lets you choose alternatives. Old shipped browsing/selfie
-  defaults upgrade; independent custom choices remain.
+- **CJ's phone actions.** Eighteen original upper-body clips are embedded in
+  the ASI. The left hand holds the phone; actions include taking it out,
+  lowered holding, reading, typing, calls, rear-camera photos, selfies,
+  shutter presses and putting it away. Camera flips and exits have their own
+  transitions. No separate animation installation is needed.
+  Story calls, falls, swimming, vehicles and protected tasks take priority.
+  Cleanup fades only the phone's association. `[Animations]` selects clip,
+  block and looping; old shipped placeholders upgrade automatically while
+  custom choices remain. See [animation source](assets/animations/README.md).
+  This test build still needs in-game checks of motion and handset alignment.
 - **Photos.** The Camera Roll (the Gallery folder, newest first, with the
   camera one tap away and pictures thrown into the Windows Recycle Bin) and
   the server's 27 wallpapers, with their SP-RP names.
@@ -396,6 +381,8 @@ Everything that can be changed is in one file, written next to the game the
 first time the phone starts:
 
 - `[Phone]`: the key, the phone's height, which side it sits on, and the model CJ holds.
+  `IconSize=16` keeps the default pixel icons; `IconSize=64` selects the older detailed set.
+  The original Settings wrench stays unchanged in both modes.
 - `[Apps]` `Order=`: which apps are on the home screen and in what order.
 - `[Icons]`: each app's icon, from the phone's own art, the game's radar
   icons (`hud:radar_...`), or a `.png` in the game folder.
