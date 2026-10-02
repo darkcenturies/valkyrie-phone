@@ -83,7 +83,7 @@ jobs:
           @"
           valkyrie phone $version for GTA San Andreas 1.0 US.
 
-          Download **$archive** for the full installation: phone ASI, default INI, 142 generated stock map tile pairs, optional weapon model/configs, optional map builder, README and credits.
+          Download **$archive** for the full installation: phone ASI, default INI, 144 generated stock map tile pairs, optional weapon model/configs, optional map builder, README and credits.
 
           Optional weapon mode requires Modloader 0.3.10 and fastman92 7.6 installed separately. Its configurations are already prepared; copy the supplied game-folder files. Internet includes eight authored offline SA pages. GTA IV page packs remain personal local build inputs.
 

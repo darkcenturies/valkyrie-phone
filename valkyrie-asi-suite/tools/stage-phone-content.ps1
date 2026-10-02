@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'phone-content.json') -Raw | ConvertFrom-Json
-if (-not $Cache) { $Cache = Join-Path ([IO.Path]::GetTempPath()) 'valkyrie-phone-content-v1' }
+if (-not $Cache) { $Cache = Join-Path ([IO.Path]::GetTempPath()) 'valkyrie-phone-content-v2' }
 New-Item -ItemType Directory -Force -Path $Cache, $Output | Out-Null
 foreach ($asset in $manifest.assets) {
     $path = Join-Path $Cache $asset.name
@@ -69,7 +69,7 @@ are included. Settings are in valkyrie-phone.ini. Call Trainer in Contacts
 or press Alt+Z for the trainer. Skin=Keypad selects the optional keypad handset.
 In [Phone], IconSize=16 uses the default pixel artwork; IconSize=64 selects
 the older detailed icons. The original GTA Settings wrench stays unchanged.
-Maps includes 142 generated stock SA tile pairs. Internet includes eight
+Maps includes 144 generated stock SA tile pairs. Internet includes eight
 authored offline SA pages. External links open the desktop browser; GTA IV
 browser pages are personal local build inputs.
 

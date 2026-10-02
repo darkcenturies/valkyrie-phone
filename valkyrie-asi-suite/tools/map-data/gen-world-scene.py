@@ -179,7 +179,7 @@ def text_instances(path):
                 try:
                     out.append({
                         "model": parts[1],
-                        "interior": int(parts[2]),
+                        "interior": int(parts[2]) & 0xff,
                         "pos": [float(parts[3]), float(parts[4]), float(parts[5])],
                         "rot": [float(parts[6]), float(parts[7]),
                                 float(parts[8]), float(parts[9])],
@@ -220,7 +220,7 @@ def binary_instances(blob, names):
 
         out.append({
             "model": name,
-            "interior": interior,
+            "interior": interior & 0xff,
             "pos": [px, py, pz],
             "rot": [rx, ry, rz, rw],
             "lod": lod,
@@ -297,9 +297,14 @@ def main():
     # the game itself shows when a building is too far off to draw properly.
     want_stand_ins = "--stand-ins" in sys.argv
 
+    # Area 13 is shared by every area, including the exterior: GTA's
+    # CEntity::IsInCurrentArea accepts it alongside the current area.
+    # Excluding it removes real roads and ground (for example Lae2_roads28
+    # and lae2_ground08 beside the new-game spawn). The instance type
+    # packs stream/tunnel flags above the low-byte area code.
     # Stock exterior placements and the retained stadium landmark.
     outdoor = [i for i in found
-               if ((i["interior"] in (0, -1) and i["pos"][2] < INTERIOR_CEILING)
+               if ((i["interior"] in (0, 13, 255) and i["pos"][2] < INTERIOR_CEILING)
                    or kept_interior(i["pos"]))
                and i["pos"][2] > WORLD_FLOOR
                and i["is_lod"] == want_stand_ins]
