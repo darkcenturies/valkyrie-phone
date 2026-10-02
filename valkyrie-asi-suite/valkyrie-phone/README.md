@@ -337,6 +337,17 @@ or the build fails. This local
 build differs from the public Actions download. GTA IV files and derived
 pages are not committed or distributed by Actions.
 
+To restore a page pack from a previous personal build instead of converting
+GTA IV again, use its existing VWEB file:
+
+```powershell
+./valkyrie-asi-suite/build.ps1 -Release -WebPackPath "C:\PhoneAssets\valkyrie-web.dat"
+```
+
+This embeds that supplied local content in your ASI and prints its page count.
+It is a personal build input, not content included in the Actions artifact.
+Use one of `-Gta4Path` or `-WebPackPath`. Neither uploads the input to GitHub.
+
 `tools/iv-web/whm.py` reads GTA IV's `.whm` pages. The converter reconstructs
 HTML, reflows it for a 320-point screen, and stores page images plus link
 rectangles. `american.gxt` supplies text used by pages such as Eyefind,
