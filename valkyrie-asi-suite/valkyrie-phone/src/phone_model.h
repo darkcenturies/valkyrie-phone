@@ -1,10 +1,7 @@
 // The phone CJ holds: a model of the phone's own, separate from the game's.
 //
-// The game has one cellphone, model 330, which story missions put in CJ's hand
-// for their calls. This phone brings its own model (valkyrie-phone-model.dff
-// and .txd next to the game) and shows it only while this phone is in use: for
-// that time model 330 is pointed at it, and afterwards at the game's own
-// again, so every call the game makes still has the game's phone.
+// Story calls use model 330. This phone draws a separate clone of its own
+// valkyrie-phone-model.dff and .txd, without replacing the story handset.
 //
 // Without the files the game's phone is used throughout.
 #pragma once
@@ -45,7 +42,10 @@ void MakeShiny(uintptr_t envTexture, float coefficient);
 // not in his hand). Where the pass cannot be found, RenderInLeftHand, from a
 // 2D draw hook, draws it over the finished frame instead.
 bool HookWeaponPass();
-void SetHand(bool on, const float turn[3], const float offset[3], bool flip);
+// Hide the optional native weapon independently of drawing the raised handset.
+void HideNativeWeapon(bool hide);
+// Stock call clips use the right wrist; other actions keep the left wrist.
+void SetHand(bool on, const float turn[3], const float offset[3], bool flip, bool right = false);
 bool RenderInLeftHand(uintptr_t ped, const float turn[3], const float offset[3], bool flip);
 // Where the phone in the left hand is, as of the last frame the game
 // animated the ped: its middle and the way it faces.

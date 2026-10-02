@@ -5,6 +5,17 @@
 #include <string>
 
 namespace phone_weapon {
+enum class Selection { None, Open, Close, Select, Restore };
+constexpr Selection NextSelection(bool selected, bool wasSelected, bool open,
+                                   bool canSelect, bool finishingHand) {
+    if (!canSelect) return Selection::None;
+    if (selected && !wasSelected && !open) return Selection::Open;
+    if (!selected && wasSelected && open) return Selection::Close;
+    if (open && !selected && !wasSelected) return Selection::Select;
+    if (!open && selected && !finishingHand) return Selection::Restore;
+    return Selection::None;
+}
+
 // Read only the explicitly configured extra type; never probe outside the
 // stock or limit-adjuster's weapon-info array looking for a matching model.
 inline int FindType(std::istream& file, int limit) {

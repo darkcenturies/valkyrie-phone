@@ -4,6 +4,14 @@
 #include <initializer_list>
 using namespace phone_actions;
 int main() {
+    assert(Next(Pose::Use, Pose::CallTalk, false, true, false) == Pose::CallIn);
+    assert(Next(Pose::CallIn, Pose::CallTalk, false, true, false) == Pose::CallIn);
+    assert(Next(Pose::CallIn, Pose::CallTalk, true, true, false) == Pose::CallTalk);
+    assert(Next(Pose::CallTalk, Pose::Use, false, true, false) == Pose::CallOut);
+    assert(Next(Pose::CallOut, Pose::Use, false, true, false) == Pose::CallOut);
+    assert(Next(Pose::CallOut, Pose::Use, true, true, false) == Pose::Use);
+    assert(Next(Pose::CallOut, Pose::CallTalk, false, true, false) == Pose::CallIn);
+    assert(Next(Pose::CallTalk, Pose::None, false, false, false) == Pose::None);
     assert(!NeedsHand(false, false, false, Pose::None)); // Tucked UI / weapon selection.
     assert(NeedsHand(true, false, false, Pose::None)); // Right click starts take-out.
     assert(NeedsHand(false, false, true, Pose::PutAway)); // Finish returning it.

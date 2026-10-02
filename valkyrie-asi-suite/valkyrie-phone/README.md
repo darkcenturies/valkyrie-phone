@@ -148,8 +148,8 @@ the game lights CJ, in the game's own weapon pass right after the world - so
 CJ's body and fingers hide it where they should, as they would a gun. It is
 turned half round about its own length (measured from the model) so its
 screen faces CJ (`HandFlip=1`); `[Model] HandTurn` and `HandOffset` set how
-it sits in the hand. At CJ's ear for a call the mission phone task has his right hand,
-as in the story.
+it sits in the hand. Calls use the stock right-hand phone clips and draw this
+same handset on the right wrist, without creating the mission phone task.
 
 The model in CJ's hand reflects as the game's cars do: every material is
 given the game's own car reflection (`vehicleenvmap128`) through
@@ -307,9 +307,10 @@ Contacts, messages, recent calls and settings are saved to
 `valkyrie-phone.dat` in the GTA San Andreas User Files folder, beside the save
 games.
 
-During a call CJ puts the phone to his ear: the plugin runs the game's own
-`TASK_USE_MOBILE_PHONE` opcode (0729), the one missions use, through the
-script interpreter (`valkyrie-core/src/script.h`).
+Calls reuse the stock `phone_in`, `phone_talk` and `phone_out` clips. Hanging
+up releases the call pose; putting away the phone cancels the call. In optional
+weapon mode, scrolling selects the tucked UI. Right-click exposes the model;
+scrolling away closes the phone and returns control to the selected weapon.
 
 Not done yet: the taxi number, and the machines' sounds.
 

@@ -69,12 +69,7 @@ constexpr uintptr_t kUserFolder = 0x744FB0;            // InitUserDirectories, c
 // CMessages::AddMessageJump(text, ms, flag, previousBrief). The game keeps the
 // pointer, not a copy, so the text has to outlive the subtitle.
 constexpr uintptr_t kAddMessageJump = 0x69F1E0;
-// TASK_USE_MOBILE_PHONE (ped, bool): what a mission runs to put the phone to
-// CJ's ear for a call and take it away again - phone_in, phone_talk and
-// phone_out all come with it.
-constexpr uint16_t kTaskUseMobilePhone = 0x0729;
-// The weapon in CJ's hand, and the cellphone model the phone's own copy is
-// made from (the mission phone task puts the same model in his right hand).
+// Weapon selection is independent of handset visibility.
 constexpr uintptr_t kSetCurrentWeapon = 0x5E61F0;   // CPed::SetCurrentWeapon(int slot)
 constexpr uintptr_t kRequestModel = 0x4087E0;
 constexpr uintptr_t kSetModelIsDeletable = 0x409C10;
@@ -261,8 +256,6 @@ struct State {
 
     Call call;
     bool phoneAtEar = false;
-    ULONGLONG earLostAt = 0;   // since when the talking animation has been missing mid-call
-    ULONGLONG earRetryAt = 0;  // not looked for again before this, after putting it back
     bool holding = false;   // the cellphone model is in CJ's hand
     bool flashlight = false;  // the Flashlight app's light is on
     int holsteredSlot = 0;  // the weapon slot put away to hold it
@@ -5282,7 +5275,7 @@ void DrawFlash() {
 }
 
 // --- CJ's phone actions ------------------------------------------------------
-// Stock SA clips, sequenced by action. Calls retain the game's mobile-phone task.
+// Stock SA clips, including calls, without creating mission-phone tasks.
 constexpr uint16_t kPlayAnim = 0x0605;
 constexpr uint16_t kPlayingAnim = 0x0611;
 constexpr uint16_t kPauseAnim = 0x0612;
@@ -5299,7 +5292,7 @@ struct PoseState {
     Pose now = Pose::None;
     config::Anim anim;
     bool playing = false, seen = false, held = false, resumeRaised = false;
-    ULONGLONG started = 0, checked = 0, typingAt = 0, photoAt = 0, earReleaseUntil = 0;
+    ULONGLONG started = 0, checked = 0, typingAt = 0, photoAt = 0;
     int tries = 0;
     uintptr_t association = 0;
     ULONGLONG loadStarted = 0;
@@ -5361,6 +5354,9 @@ const config::Anim& PoseAnimation(Pose pose) {
         case Pose::Photo: return c.photoAnim;
         case Pose::CameraOut: return c.cameraOutAnim;
         case Pose::PutAway: return c.putAwayAnim;
+        case Pose::CallIn: { static const config::Anim a{"phone_in", "ped", false}; return a; }
+        case Pose::CallTalk: { static const config::Anim a{"phone_talk", "ped", true}; return a; }
+        case Pose::CallOut: { static const config::Anim a{"phone_out", "ped", false}; return a; }
         default: return c.useAnim;
     }
 }
@@ -5377,13 +5373,12 @@ void UpdatePose() {
     } else g_pose.fieldText.clear();
     g_pose.field = g.field.value;
     game::VehicleState vehicle{};
-    const bool earReturning = now < g_pose.earReleaseUntil;
-    const bool allowed = g.holding && !g.phoneAtEar && !earReturning &&
-                         !(g.call.active && !g.call.speaker) && PlayerCanUsePhone() &&
+    const bool allowed = g.holding && PlayerCanUsePhone() &&
                          !game::PlayerVehicleState(vehicle) && !InTransition(ped) &&
                          !script::Command(kInWater, {handle}) && !script::Command(kInAir, {handle});
     Pose desired = Pose::None;
-    if (g.camera.on) desired = g.camera.selfie ? Pose::Selfie : Pose::Camera;
+    if (g.out && g.focused && g.call.active && !g.call.speaker) desired = Pose::CallTalk;
+    else if (g.camera.on) desired = g.camera.selfie ? Pose::Selfie : Pose::Camera;
     else if (g.out && g.focused) desired = g_pose.typingAt && now - g_pose.typingAt < 900 ? Pose::Type : Pose::Use;
     const bool shutter = g.camera.on && g.camera.shotAt && g.camera.shotAt != g_pose.photoAt;
     if (shutter) g_pose.photoAt = g.camera.shotAt;
@@ -6627,6 +6622,7 @@ void KeyMinus() {
 }
 
 void PutAway() {
+    EndCall();
     // The light goes out with the phone.
     g.flashlight = false;
     g.cameraPaused = false;
@@ -6711,21 +6707,9 @@ void PlayAlert(const std::string& tone, ULONGLONG buzz) {
     sound::Play(tone);
 }
 
-// The phone in CJ's left hand while it is out. It is an item of its own, not
-// a weapon: his fists are out while he holds it, the weapon he was holding is
-// put away for it and given back when the phone goes away, and no weapon can
-// be drawn meanwhile. The game only draws held models in the right hand, so
-// the phone draws itself on the left hand's bone (phone_model::
-// RenderInLeftHand, from Draw). While it is at his ear the mission phone
-// task has his right hand and its own copy of the model.
-// --- The phone as a weapon ---------------------------------------------------
-//
-// With the Valkyrie Phone modloader folder in, and its line in fastman92's
-// weapon type config, the phone is a weapon of the game's own (VALKYRIEPHONE,
-// model 19990, the detonator's slot): the game scrolls to it and away,
-// draws it in CJ's left hand. Selected, the phone comes
-// out; another weapon selected, it goes away; P selects it. Without them the
-// phone holds itself, as HoldPhone does below.
+// Optional weapon mode keeps its own selectable slot. Selection exposes the
+// tucked UI; right-click takes out the model, independently of that slot.
+// Without the optional configs, HoldPhone temporarily holsters the weapon.
 constexpr int kPhoneWeaponModel = 19990;
 constexpr int kPhoneWeaponSlot = 12;
 constexpr uintptr_t kGetWeaponInfo = 0x743C60;  // CWeaponInfo::GetWeaponInfo(type, skill)
@@ -6796,37 +6780,36 @@ void WieldPhone(uintptr_t ped, int type) {
         g.holding = false;
         return;
     }
-    const bool onFoot = true;
     const bool wielded = CurrentSlot(ped) == kPhoneWeaponSlot;
     auto select = [&](int slot) { reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, slot); };
-    const bool want = phone_actions::NeedsHand(g.focused, g.camera.on, g_pose.playing, g_pose.now) && onFoot && !PlayerSwimming() && PlayerAble();
-    if (wielded && !g.wieldedLastFrame && !g.out && PlayerCanUsePhone()) {
-        // Scrolled onto: out it comes, lowered at his side - the mouse and its
-        // wheel stay the game's, to scroll on past it. The right button raises it.
-        g.holsteredSlot = 0;
-        Open();
-        if (g.out) { Lower(); select(0); }
-    } else if (!wielded && g.wieldedLastFrame && g.out) {
-        // Another weapon chosen: away it goes, and that weapon stays.
-        g.holsteredSlot = -1;
-        StopPose();
-        PutAway();
-    } else if (want && !wielded && !g.wieldedLastFrame) {
-        // Taken out some other way (P, another mod): it becomes the weapon in
-        // his hand, and the one there is given back when it goes away.
-        g.holsteredSlot = CurrentSlot(ped);
-        select(kPhoneWeaponSlot);
-    } else if (!want && wielded) {
-        // Put away some other way: the weapon from before is back in his hand.
-        select(g.holsteredSlot > 0 ? g.holsteredSlot : 0);
+    const bool want = phone_actions::NeedsHand(g.focused, g.camera.on, g_pose.playing, g_pose.now) && PlayerAble();
+    switch (phone_weapon::NextSelection(wielded, g.wieldedLastFrame, g.out, PlayerCanUsePhone(), want)) {
+        case phone_weapon::Selection::Open:
+            g.holsteredSlot = 0;
+            Open(); // Stay selected while tucked; wheel input remains with GTA.
+            break;
+        case phone_weapon::Selection::Close:
+            g.holsteredSlot = -1;
+            StopPose();
+            PutAway();
+            break;
+        case phone_weapon::Selection::Select:
+            g.holsteredSlot = CurrentSlot(ped);
+            select(kPhoneWeaponSlot);
+            break;
+        case phone_weapon::Selection::Restore:
+            select(g.holsteredSlot > 0 ? g.holsteredSlot : 0);
+            break;
+        default: break;
     }
-    g.wieldedLastFrame = CurrentSlot(ped) == kPhoneWeaponSlot && onFoot;
+    g.wieldedLastFrame = CurrentSlot(ped) == kPhoneWeaponSlot;
     g.holding = want && g.wieldedLastFrame;
-    // Drawn in his left hand from model 330, as when it holds itself.
-    if (g.holding) phone_model::Use(true);
+    phone_model::HideNativeWeapon(g.wieldedLastFrame);
+
 }
 
 void HoldPhone() {
+    phone_model::HideNativeWeapon(false);
     const uintptr_t ped = PlayerPed();
     if (!ped) {
         g.holding = false;
@@ -6845,22 +6828,17 @@ void HoldPhone() {
     if (want && !g.holding) {
         if (!EnsureModel(kCellphoneModel)) return;
         // This phone's own model, not the game's (phone_model.h).
-        phone_model::Use(true);
         g.holsteredSlot = slot();
         if (g.holsteredSlot != 0) fists();
         g.holding = true;
     } else if (want && g.holding) {
         // No weapon while the phone is in his hand.
         if (slot() != 0) fists();
-        if (!g.phoneAtEar) phone_model::Use(true);
     } else if (!want && g.holding) {
         phone_model::ReleaseHand();
         if (g.holsteredSlot != 0 && slot() == 0) {
             reinterpret_cast<void(__thiscall*)(uintptr_t, int)>(kSetCurrentWeapon)(ped, g.holsteredSlot);
         }
-        // The game's phone back, before the model may be unloaded - unless
-        // this phone is at CJ's ear for a call.
-        if (!g.phoneAtEar) phone_model::Use(false);
         g.holsteredSlot = 0;
         g.holding = false;
     }
@@ -7487,56 +7465,13 @@ void Frame() {
     UpdateCall();
     if (g.loaded) RadioFrame();
 
-    // CJ's pose first: a call about to go to his ear needs his hands free
-    // before the game's phone task takes them.
+    // Stock action clips own the handset pose; calls do not create mission tasks.
     if (g.loaded) UpdatePose();
 
-    // The phone at CJ's ear for as long as a call is up.
-    // Swimming, the call goes on hands-free (the game's phone task does not
-    // swim) and back to his ear once he is out of the water.
-    const bool wantEar = g.focused && g.call.active && !g.call.speaker && PlayerAble() && !PlayerSwimming();
-    if (wantEar != g.phoneAtEar) {
-        // The call's phone is this one too: the task puts model 330 in CJ's
-        // hand when it starts.
-        if (wantEar) phone_model::Use(true);
-        if (const uintptr_t ped = PlayerPed()) {
-            script::Command(kTaskUseMobilePhone, {script::PedHandle(ped), wantEar});
-            logfile::Line("phone: %s the ear", wantEar ? "to" : "away from");
-            if (!wantEar) g_pose.earReleaseUntil = GetTickCount64() + 1200;
-        }
-        g.phoneAtEar = wantEar;
-        g.earLostAt = 0;
-    }
-    // At his ear for a call, the game's talking animation must be on him. A
-    // jump, a fall, a shove or a punch takes him out of the phone task, and
-    // it is not given back by itself: once he is on his feet again, with the
-    // call still on, the phone goes back to his ear.
-    if (g.phoneAtEar && wantEar) {
-        if (const uintptr_t ped = PlayerPed()) {
-            const int handle = script::PedHandle(ped);
-            const bool talking = script::Command(kPlayingAnim, {handle, "phone_talk"}) ||
-                                 script::Command(kPlayingAnim, {handle, "phone_in"});
-            const bool steady = !script::Command(kInAir, {handle}) && !script::Command(kInWater, {handle}) &&
-                                !InTransition(ped);
-            const ULONGLONG now = GetTickCount64();
-            if (talking || !steady || now < g.earRetryAt) {
-                g.earLostAt = 0;
-            } else if (!g.earLostAt) {
-                g.earLostAt = now;
-            } else if (now - g.earLostAt > 1200) {
-                logfile::Line("phone: CJ lost the phone from his ear mid-call - putting it back");
-                phone_model::Use(true);
-                script::Command(kTaskUseMobilePhone, {handle, true});
-                g.earLostAt = 0;
-                g.earRetryAt = now + 2500;  // time for the task to start before looking again
-            }
-        }
-    }
+    g.phoneAtEar = phone_actions::CallPose(g_pose.now) && g_pose.playing;
     if (g.loaded) HoldPhone();
-    phone_model::SetHand(g.holding && !g.phoneAtEar && GetTickCount64() >= g_pose.earReleaseUntil && g.loaded, config::Get().handTurn,
-                         config::Get().handOffset, config::Get().handFlip);
-    // Neither in the hand nor at the ear: model 330 is the game's again.
-    if (!g.holding && !g.phoneAtEar) phone_model::Use(false);
+    phone_model::SetHand(g.holding && g.loaded, config::Get().handTurn,
+                         config::Get().handOffset, config::Get().handFlip, g.phoneAtEar);
     UpdateCamera();
     if (g.loaded) CheckAlarm();
     CheckTimer();
@@ -8299,7 +8234,7 @@ void Draw() {
     g.drawnSinceUp = true;
     // The phone in CJ's left hand, into the game's own picture before
     // anything of the phone's is drawn over it.
-    if (g.holding && !g.phoneAtEar && g.loaded) {
+    if (g.holding && g.loaded) {
         phone_model::RenderInLeftHand(PlayerPed(), config::Get().handTurn, config::Get().handOffset,
                                       config::Get().handFlip);
     }
