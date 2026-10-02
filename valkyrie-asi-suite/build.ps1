@@ -66,7 +66,7 @@ if ($Install -and [string]::IsNullOrWhiteSpace($game)) {
 }
 # The phone's version.
 $version = "0.2.1"
-$phoneVersion = "0.2.4-test"
+$phoneVersion = "0.2.5-test"
 
 # Visual Studio 2019 Build Tools. Found rather than hardcoded, because the
 # toolset version in the path changes with every update.
@@ -179,7 +179,7 @@ foreach ($targetSpec in $targets) {
         # one has been built into build\valkyrie-web.dat. One blob, one
         # resource; the game folder gets only the ASI and its ini.
         $phoneTxd = Join-Path $build "valkyrie-phone.txd"
-        & (Join-Path $root "tools\pack-phone-txd.ps1") -Source (Join-Path $root "valkyrie-phone\assets\generated") -Output $phoneTxd -RequiredNames @('app_maps', 'app_photos', 'app_settings', 'app_phone', 'app_text', 'app_contacts', 'app_internet', 'app_games', 'app_clock', 'app_calculator', 'app_notes', 'app_weather', 'app_stocks', 'app_radio', 'app_calendar', 'app_flashlight')
+        & (Join-Path $root "tools\pack-phone-txd.ps1") -Source (Join-Path $root "valkyrie-phone\assets\generated") -Output $phoneTxd -RequiredNames @('app_maps', 'app_camera', 'app_photos', 'app_settings', 'app_phone', 'app_text', 'app_contacts', 'app_internet', 'app_games', 'app_clock', 'app_calculator', 'app_notes', 'app_weather', 'app_stocks', 'app_radio', 'app_calendar', 'app_flashlight')
         $bundleFiles = [Collections.Generic.List[object]]::new()
         $bundleFiles.Add(@("valkyrie-phone.txd", $phoneTxd))
         # The model CJ holds (valkyrie-phone\tools\phone-model) and its textures.
