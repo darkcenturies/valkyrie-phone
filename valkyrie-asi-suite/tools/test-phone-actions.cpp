@@ -27,5 +27,10 @@ int main() {
                    Pose::CameraOut, Pose::PutAway}) {
         assert(Next(p, Pose::Use, false, false, true) == Pose::None);
     }
+    assert(LegacyDefault("BETSLP_LOOP", "OTB", true, "betslp_loop", "otb", true));
+    assert(LegacyDefault("ARRESTgun", "ped", false, "ARRESTgun", "ped", false));
+    assert(!LegacyDefault("my_phone_idle", "custom", true, "betslp_loop", "otb", true));
+    assert(!LegacyDefault("betslp_loop", "otb", false, "betslp_loop", "otb", true));
+    assert(!LegacyDefault("ARRESTgun", "custom", false, "ARRESTgun", "ped", false));
     std::puts("PASS: entry, typing, camera/shutter, exit, rapid reopening and protected interruptions");
 }

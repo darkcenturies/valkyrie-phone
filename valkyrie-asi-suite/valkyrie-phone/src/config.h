@@ -139,7 +139,7 @@ struct Config {
     Anim cameraOutAnim{"picstnd_out", "camera", false};
     // Where the lens is in the two camera poses.
     Lens cameraLens{0.05f, 0.60f, 0.65f};
-    Lens selfieLens{0.20f, 1.10f, 0.66f};
+    Lens selfieLens{0.05f, 0.60f, 0.65f};
     std::string homePage = "www.eyefind.info";
 };
 

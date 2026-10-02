@@ -5415,7 +5415,7 @@ void UpdatePose() {
                 ReleaseAnimFile();
             } else {
                 const auto& a = g_pose.anim;
-                script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop,
+                script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop && !phone_actions::OneShot(want),
                                           false, false, !a.loop && !phone_actions::OneShot(want), -1});
                 ++g_pose.tries;
                 g_pose.started = now;
@@ -5456,7 +5456,7 @@ void UpdatePose() {
     }
     if (g_pose.playing) FadePose(g_pose.anim);
     const std::string previousFile = g_pose.loadedFile;
-    script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop,
+    script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop && !phone_actions::OneShot(want),
                               false, false, !a.loop && !phone_actions::OneShot(want), -1});
     g_pose.now = want;
     g_pose.loadingFile.clear();

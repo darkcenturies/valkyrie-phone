@@ -1,4 +1,6 @@
 #include "config.h"
+#include "phone_actions.h"
+#include <cmath>
 
 #include <windows.h>
 
@@ -361,7 +363,7 @@ const Section kSections[] = {
      "; Where the phone's lens is in each pose, in metres from CJ's middle:\r\n"
      "; to his right, in front of him, up. Match these to the animations above.\r\n"
      "CameraLens=0.05,0.60,0.65\r\n"
-     "SelfieLens=0.20,1.10,0.66\r\n"},
+     "SelfieLens=0.05,0.60,0.65\r\n"},
     {"Internet",
      "\r\n[Internet]\r\n"
      "; The page the browser opens on, and Home goes to.\r\n"
@@ -769,15 +771,16 @@ void Load(const std::string& gameDir) {
     // Upgrade only the old shipped placeholders; retain independent custom choices.
     auto upgrade = [&](Anim& a, const char* key, const char* oldName, const char* oldFile, bool oldLoop,
                        const char* name, const char* file, bool loop) {
-        if (_stricmp(a.name.c_str(), oldName) || _stricmp(a.file.c_str(), oldFile) || a.loop != oldLoop) return;
+        if (!phone_actions::LegacyDefault(a.name, a.file, a.loop, oldName, oldFile, oldLoop)) return false;
         a = Anim{name, file, loop};
         WritePrivateProfileStringA("Animations", key, name, ini.c_str());
         const std::string k = key;
         WritePrivateProfileStringA("Animations", (k + "File").c_str(), file, ini.c_str());
         WritePrivateProfileStringA("Animations", (k + "Loop").c_str(), loop ? "1" : "0", ini.c_str());
+        return true;
     };
     upgrade(c.useAnim, "Use", "betslp_loop", "otb", true, "betslp_lkabt", "otb", true);
-    upgrade(c.selfieAnim, "Selfie", "ARRESTgun", "ped", false, "picstnd_in", "camera", false);
+    const bool upgradedSelfie = upgrade(c.selfieAnim, "Selfie", "ARRESTgun", "ped", false, "picstnd_in", "camera", false);
     auto lens = [&](const char* key, Lens fallback) {
         const std::string text = Read(ini, "Animations", key, "");
         Lens l{};
@@ -787,6 +790,11 @@ void Load(const std::string& gameDir) {
     };
     c.cameraLens = lens("CameraLens", c.cameraLens);
     c.selfieLens = lens("SelfieLens", c.selfieLens);
+    if (upgradedSelfie && std::abs(c.selfieLens.right - 0.20f) < 0.001f &&
+        std::abs(c.selfieLens.forward - 1.10f) < 0.001f && std::abs(c.selfieLens.up - 0.66f) < 0.001f) {
+        c.selfieLens = Lens{0.05f, 0.60f, 0.65f};
+        WritePrivateProfileStringA("Animations", "SelfieLens", "0.05,0.60,0.65", ini.c_str());
+    }
     c.homePage = Read(ini, "Internet", "Home", "www.eyefind.info");
 
     g_config = c;

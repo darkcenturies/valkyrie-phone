@@ -1,7 +1,20 @@
 #pragma once
+#include <string_view>
 
 // Decisions only: the game adapter owns animation playback and interruption checks.
 namespace phone_actions {
+constexpr bool SameName(std::string_view a, std::string_view b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; };
+        if (lower(a[i]) != lower(b[i])) return false;
+    }
+    return true;
+}
+constexpr bool LegacyDefault(std::string_view name, std::string_view file, bool loop,
+                             std::string_view oldName, std::string_view oldFile, bool oldLoop) {
+    return SameName(name, oldName) && SameName(file, oldFile) && loop == oldLoop;
+}
 enum class Pose { None, TakeOut, Use, Type, Camera, Selfie, Photo, CameraOut, PutAway };
 constexpr bool CameraPose(Pose p) { return p == Pose::Camera || p == Pose::Selfie || p == Pose::Photo; }
 constexpr bool OneShot(Pose p) {
