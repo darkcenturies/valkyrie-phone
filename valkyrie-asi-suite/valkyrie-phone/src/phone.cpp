@@ -4823,14 +4823,26 @@ void Lower();
 // Where the lens is, and what it looks at.
 void Lens(int handle, Vec3& eye, Vec3& target) {
     const config::Config& c = config::Get();
+    const config::Lens& lens = g.camera.selfie ? c.selfieLens : c.cameraLens;
+    const config::Anim& stance = g.camera.selfie ? c.selfieAnim : c.cameraAnim;
+    float handset[3]{}, direction[3]{};
+    const bool followsHand = phone_animation::Bundled(stance.file) &&
+        lens.right == 0.05f && lens.forward == 0.60f && lens.up == 0.65f &&
+        phone_model::LeftHandLamp(PlayerPed(), c.handTurn, c.handOffset, c.handFlip, handset, direction);
     if (g.camera.selfie) {
         const config::Lens& l = c.selfieLens;
-        eye = OffsetFromPed(handle, l.right, l.forward, l.up + g.camera.arm);
+        // The front lens is across the handset's thickness from its rear lens.
+        // Follow the actual animated hand; custom INI lens offsets still win.
+        eye = followsHand ? Vec3{handset[0] - direction[0] * 0.03f,
+                                handset[1] - direction[1] * 0.03f,
+                                handset[2] - direction[2] * 0.03f} :
+                           OffsetFromPed(handle, l.right, l.forward, l.up + g.camera.arm);
         target = OffsetFromPed(handle, 0.0f, 0.0f, 0.62f);
         return;
     }
     const config::Lens& l = c.cameraLens;
-    eye = OffsetFromPed(handle, l.right, l.forward, l.up);
+    eye = followsHand ? Vec3{handset[0], handset[1], handset[2]} :
+                        OffsetFromPed(handle, l.right, l.forward, l.up);
     const float h = g.camera.heading * 3.14159265f / 180.0f;
     const float p = g.camera.pitch * 3.14159265f / 180.0f;
     target = {eye.x - std::sin(h) * std::cos(p) * 20.0f, eye.y + std::cos(h) * std::cos(p) * 20.0f,
