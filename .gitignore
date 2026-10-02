@@ -11,3 +11,4 @@ __pycache__/
 valkyrie-asi-suite/valkyrie-core/src/version.h
 # The browser's page pack is built on your own machine (see README.md)
 valkyrie-asi-suite/valkyrie-phone/assets/web/
+/build/
