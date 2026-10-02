@@ -45,9 +45,24 @@ foreach($file in $files) {
     $writer.Write([uint32]9);$writer.Write($filter)
     $label=[byte[]]::new(32);[Text.Encoding]::ASCII.GetBytes($name).CopyTo($label,0)
     $writer.Write($label);$writer.Write([byte[]]::new(32))
-    $writer.Write([uint32]0x0500);$writer.Write([uint32]21)
-    $writer.Write([uint16]$w);$writer.Write([uint16]$h)
-    $writer.Write([byte[]]@(32,1,4,1));$writer.Write([uint32]$pixels.Length);$writer.Write($pixels)
+    # The optional weapon HUD icon uses the stock fist's 64px DXT3 format.
+    $ddsPath = [IO.Path]::ChangeExtension($file.FullName, '.dds')
+    if ($name -eq 'valkyriephoneicon' -and (Test-Path -LiteralPath $ddsPath)) {
+        $dds = [IO.File]::ReadAllBytes($ddsPath)
+        if ($dds.Length -ne 128 + $w * $h -or
+            [Text.Encoding]::ASCII.GetString($dds, 0, 4) -ne 'DDS ' -or
+            [Text.Encoding]::ASCII.GetString($dds, 84, 4) -ne 'DXT3' -or
+            [BitConverter]::ToUInt32($dds, 12) -ne $h -or
+            [BitConverter]::ToUInt32($dds, 16) -ne $w) { throw 'Invalid phone HUD DXT3 texture.' }
+        $writer.Write([uint32]0x0300);$writer.Write([uint32]0x33545844)
+        $writer.Write([uint16]$w);$writer.Write([uint16]$h)
+        $writer.Write([byte[]]@(16,1,4,9));$writer.Write([uint32]($dds.Length - 128))
+        $writer.Write($dds, 128, $dds.Length - 128)
+    } else {
+        $writer.Write([uint32]0x0500);$writer.Write([uint32]21)
+        $writer.Write([uint16]$w);$writer.Write([uint16]$h)
+        $writer.Write([byte[]]@(32,1,4,1));$writer.Write([uint32]$pixels.Length);$writer.Write($pixels)
+    }
     $native=(Chunk 1 $stream.ToArray())+(Chunk 3 ([byte[]]@()))
     $out.Write((Chunk 0x15 $native));$writer.Dispose()
 }

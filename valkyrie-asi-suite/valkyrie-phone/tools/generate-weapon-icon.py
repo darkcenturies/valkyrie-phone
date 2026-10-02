@@ -1,41 +1,16 @@
-"""Generate the phone weapon HUD artwork on a 16-pixel grid.
+"""Prepare our original phone drawing using stock SA weapon icon settings.
 
-Run from any directory. Flat silver bands and a heavy black outline match
-SA's chunky HUD artwork. No antialiasing or resampling is used.
+The stock hud.txd fist is 64x64 and DXT3. Keep our original artwork; resize
+with area filtering and compress its alpha/colour with the same DXT format.
+Requires Pillow with DXT3 encoding support (12.1 or newer).
 """
 from pathlib import Path
 from PIL import Image
 
-PALETTE = {
-    ".": (0, 0, 0, 0),
-    "#": (0, 0, 0, 255),
-    "W": (235, 235, 220, 255),
-    "S": (160, 164, 155, 255),
-    "G": (65, 70, 65, 255),
-}
-PIXELS = (
-    "......#####.....",
-    ".....#######....",
-    ".....##WWW###...",
-    "....##W##WW##...",
-    "....##WWWWW###..",
-    "....##W####S##..",
-    "...##WW#G##S##..",
-    "...##W#####S##..",
-    "...##W####S##...",
-    "..##WW####S##...",
-    "..##W#####S##...",
-    "..##W####S##....",
-    "..##WW#WWS##....",
-    "...##WWWS##.....",
-    "....######......",
-    ".....####.......",
-)
-
 if __name__ == "__main__":
-    assert len(PIXELS) == 16 and all(len(row) == 16 for row in PIXELS)
-    image = Image.new("RGBA", (16, 16))
-    image.putdata([PALETTE[pixel] for row in PIXELS for pixel in row])
-    output = Path(__file__).resolve().parents[1] / "assets/weapon-icon/phone.png"
-    image.save(output)
-    print(f"Wrote {output.name}: 16x16, hard pixel edges.")
+    assets = Path(__file__).resolve().parents[1] / "assets/weapon-icon"
+    image = Image.open(assets / "phone-source.png").convert("RGBA")
+    image = image.resize((64, 64), Image.Resampling.LANCZOS)
+    image.save(assets / "phone.png")
+    image.save(assets / "phone.dds", pixel_format="DXT3")
+    print("Wrote phone.png and phone.dds: 64x64, stock SA DXT3 compression.")
