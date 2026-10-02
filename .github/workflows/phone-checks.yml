@@ -31,6 +31,9 @@ jobs:
       - name: Check icon recovery
         shell: powershell
         run: ./valkyrie-asi-suite/tools/test-phone-ui.ps1
+      - name: Radar water footprint regression
+        shell: powershell
+        run: ./valkyrie-asi-suite/tools/test-radar-water.ps1
       - name: Phone action transition regression
         shell: powershell
         run: ./valkyrie-asi-suite/tools/test-phone-actions.ps1
