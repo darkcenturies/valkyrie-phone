@@ -1,7 +1,7 @@
 """Author phone-specific upper-body clips for SA's standard ped skeleton.
 
 All motion targets and timing below are authored here; no stock animation
-keyframes are copied. Coordinates: left, up, back in the SA skin bind frame.
+keyframes are copied. Coordinates: left, up, forward in the SA skin bind frame.
 ANP3 layout follows gta-reversed AnimManager/AnimSequenceFrames (uncompressed
 rotation tracks; absolute timestamps on disk). Legs/root are deliberately absent.
 """
@@ -15,21 +15,21 @@ HERE = Path(__file__).resolve().parent
 OUTPUT = HERE / '../assets/animations/valkyrie-phone.ifp'
 BLOCK = 'vp_phone'
 UP = np.array([0., 1., 0.])
-BACK = np.array([0., 0., 1.])
+FORWARD = np.array([0., 0., 1.])
 LEFT = np.array([1., 0., 0.])
 # Standard anatomical axes, rather than sampled game animation poses.
-NECK = np.column_stack((UP, BACK, LEFT))
-CLAV = {31: np.column_stack((LEFT, -BACK, UP)),
-        21: np.column_stack((-LEFT, -BACK, -UP))}
+NECK = np.column_stack((UP, FORWARD, LEFT))
+CLAV = {31: np.column_stack((LEFT, -FORWARD, UP)),
+        21: np.column_stack((-LEFT, -FORWARD, -UP))}
 BONES = (4, 5, 31, 32, 33, 34, 35, 36, 21, 22, 23, 24, 25, 26)
 POSES = {
-    'rest': ((.34, .02, -.04), (-.34, .02, -.04), 0),
-    'hold': ((.31, .04, -.09), (-.34, .02, -.04), 0),
-    'use': ((.12, .34, -.29), (-.24, .22, -.16), 10),
-    'type': ((.12, .34, -.29), (.01, .34, -.27), 10),
-    'camera': ((.13, .65, -.44), (-.02, .55, -.38), 0),
-    'selfie': ((.28, .67, -.49), (-.30, .12, -.08), -3),
-    'call': ((.15, .72, -.035), (-.34, .02, -.04), -4),
+    'rest': ((.34, .02, .04), (-.34, .02, .04), 0),
+    'hold': ((.31, .04, .09), (-.34, .02, .04), 0),
+    'use': ((.12, .34, .29), (-.24, .22, .16), 10),
+    'type': ((.12, .34, .29), (.01, .34, .27), 10),
+    'camera': ((.13, .65, .44), (-.02, .55, .38), 0),
+    'selfie': ((.28, .67, .49), (-.30, .12, .08), -3),
+    'call': ((.15, .72, .035), (-.34, .02, .04), -4),
 }
 
 def unit(v):
@@ -53,22 +53,27 @@ def rotation_z(degrees):
     a=math.radians(degrees); c=math.cos(a); s=math.sin(a)
     return np.array([[c,-s,0],[s,c,0],[0,0,1.]])
 
-def arm(target, left):
+def rotation_y(degrees):
+    a=math.radians(degrees); c=math.cos(a); s=math.sin(a)
+    return np.array([[c,0,s],[0,1,0],[-s,0,c]])
+
+def arm(target, left, hand_yaw=0., right_grip=0.):
     shoulder=np.array([.19 if left else -.19,.52,0.])
     delta=target-shoulder; distance=float(np.linalg.norm(delta))
     direction=unit(delta); distance=min(.579,max(.025,distance))
     wrist=shoulder+direction*distance
     # Elbow bends laterally and downward, away from the phone and chest.
-    pole=np.array([1. if left else -1.,-.8,.15])
+    pole=np.array([1. if left else -1.,-.8,-.15])
     bend=unit(pole-direction*np.dot(pole,direction))
     along=(.30**2-.28**2+distance**2)/(2*distance)
     elbow=shoulder+direction*along+bend*math.sqrt(max(0.,.30**2-along**2))
     def basis(axis):
-        x=unit(axis); z=unit(np.cross(x,-BACK)); y=np.cross(z,x)
+        x=unit(axis); z=unit(np.cross(x,-FORWARD)); y=np.cross(z,x)
         return np.column_stack((x,y,z))
     upper=basis(elbow-shoulder); fore=basis(wrist-elbow)
     # Grip keeps the model upright with the configured 180-degree turn/flip.
-    hand=np.column_stack((LEFT if left else -LEFT,BACK,-UP if left else UP))
+    hand=np.column_stack((-LEFT,-FORWARD,-UP)) if left else np.column_stack((LEFT,FORWARD,-UP))
+    if left: hand=rotation_y(hand_yaw)@hand
     clav=31 if left else 21; upper_id=clav+1
     rotations={clav:quaternion(NECK.T@CLAV[clav]),
                upper_id:quaternion(CLAV[clav].T@upper),
@@ -76,6 +81,12 @@ def arm(target, left):
                clav+3:quaternion(fore.T@hand),
                clav+4:quaternion(rotation_z(30 if left else -18)),
                clav+5:quaternion(rotation_z(48 if left else -30))}
+    if not left:
+        # Relaxed fingers follow the forearm; typing/camera fingers point toward
+        # the handset in the opposite hand rather than away from it.
+        grip=rotations[clav+3]
+        if grip[3]<0: grip=-grip
+        rotations[clav+3]=unit((1-right_grip)*np.array([0.,0.,0.,1.])+right_grip*grip)
     return rotations,(shoulder,elbow,wrist)
 
 def pose(a,b,progress,t,activity=''):
@@ -88,9 +99,12 @@ def pose(a,b,progress,t,activity=''):
     if activity=='type': r[2]+=.012*(1-math.cos(2*math.pi*t/.72))
     if activity=='idle': l[1]+=.003*math.sin(2*math.pi*t/2.4)
     if activity=='photo': l[2]-=.004*math.sin(math.pi*progress)**2
-    rotations,lp=arm(l,True); right,rp=arm(r,False); rotations.update(right)
-    rotations[4]=quaternion(rotation_z(-h*.25))
-    rotations[5]=quaternion(rotation_z(-h*.75))
+    yaw0=90. if a=='call' else 0.; yaw1=90. if b=='call' else 0.
+    grip0=1. if a in ('type','camera') else 0.; grip1=1. if b in ('type','camera') else 0.
+    rotations,lp=arm(l,True,yaw0+(yaw1-yaw0)*smooth)
+    right,rp=arm(r,False,right_grip=grip0+(grip1-grip0)*smooth); rotations.update(right)
+    rotations[4]=quaternion(rotation_z(h*.25))
+    rotations[5]=quaternion(rotation_z(h*.75))
     if activity=='type': rotations[25]=quaternion(rotation_z(-10-12*math.sin(2*math.pi*t/.72)**2))
     if activity=='photo': rotations[35]=quaternion(rotation_z(30+8*math.sin(math.pi*progress)**2))
     return rotations,(lp,rp)
