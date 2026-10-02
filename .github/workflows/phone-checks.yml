@@ -20,3 +20,6 @@ jobs:
       - name: Device reset shim regression
         shell: powershell
         run: ./valkyrie-asi-suite/tools/test-device-hooks.ps1
+      - name: Phone weapon type regression
+        shell: powershell
+        run: ./valkyrie-asi-suite/tools/test-phone-weapon.ps1
