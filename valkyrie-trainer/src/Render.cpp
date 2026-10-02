@@ -9,6 +9,7 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx9.h"
 #include "Render.h"
+#include "DeviceHooks.h"
 #include "FaultGuard.h"
 #include "Menu.h"
 #include "ModelPreview.h"
@@ -22,9 +23,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace Render
 {
-    static safetyhook::VmtHook g_vmt;
-    static safetyhook::VmHook g_endSceneHook;
-    static safetyhook::VmHook g_resetHook;
+    static DeviceHooks g_deviceHooks;
     static safetyhook::InlineHook g_updateMouseHook;
     static safetyhook::InlineHook g_cursorPositionHook;
     static safetyhook::InlineHook g_cursorClipHook;
@@ -189,13 +188,14 @@ namespace Render
 
     static HRESULT __stdcall HookedReset(IDirect3DDevice9 *device, D3DPRESENT_PARAMETERS *pp)
     {
+        if (device != g_deviceHooks.owner) return g_deviceHooks.reset(device, pp);
         instrument::HookFired(g_resetInstrument);
         ModelPreview::InvalidateDeviceObjects();
         if (g_imguiInit)
         {
             ImGui_ImplDX9_InvalidateDeviceObjects();
         }
-        HRESULT hr = g_resetHook.stdcall<HRESULT>(device, pp);
+        HRESULT hr = g_deviceHooks.reset(device, pp);
         if (g_imguiInit && SUCCEEDED(hr))
         {
             ImGui_ImplDX9_CreateDeviceObjects();
@@ -225,7 +225,7 @@ namespace Render
 
     static HRESULT __stdcall HookedEndScene(IDirect3DDevice9 *device)
     {
-        if(g_faulted)return g_endSceneHook.stdcall<HRESULT>(device);
+        if(device != g_deviceHooks.owner || g_faulted)return g_deviceHooks.endScene(device);
         instrument::HookFired(g_drawInstrument);
         if (!g_imguiInit)
         {
@@ -242,7 +242,7 @@ namespace Render
         if (g_menuOpen)
         {
             SafeDrawMenu();
-            if(g_faulted)return g_endSceneHook.stdcall<HRESULT>(device);
+            if(g_faulted)return g_deviceHooks.endScene(device);
         }
         ModelPreview::EndFrame();
 
@@ -253,7 +253,7 @@ namespace Render
             ImGui_ImplDX9_RenderDrawData(drawData);
         }
 
-        return g_endSceneHook.stdcall<HRESULT>(device);
+        return g_deviceHooks.endScene(device);
     }
 
     static void TryInstallHook()
@@ -288,19 +288,9 @@ namespace Render
 
         auto *device = reinterpret_cast<IDirect3DDevice9 *>(devicePtr);
 
-        if (auto vmt = safetyhook::VmtHook::create(device))
-        {
-            g_vmt = std::move(*vmt);
+        if (!g_deviceHooks.Install(device, HookedEndScene, HookedReset)) {
+            logfile::Line("D3D hooks could not be installed"); return;
         }
-        else
-        {
-            return;
-        }
-
-        g_endSceneHook = safetyhook::create_vm(g_vmt, 42, HookedEndScene);
-        g_resetHook = safetyhook::create_vm(g_vmt, 16, HookedReset);
-        if (!g_endSceneHook.original<void*>() || !g_resetHook.original<void*>()) { logfile::Line("D3D hooks could not be installed"); return; }
-        g_vmt.apply(device);
         auto** vtable = *reinterpret_cast<void***>(device);
         g_drawInstrument = instrument::RegisterHook("trainer model and menu draw", reinterpret_cast<uintptr_t>(&vtable[42]), reinterpret_cast<void*>(HookedEndScene));
         g_resetInstrument = instrument::RegisterHook("trainer device reset", reinterpret_cast<uintptr_t>(&vtable[16]), reinterpret_cast<void*>(HookedReset));

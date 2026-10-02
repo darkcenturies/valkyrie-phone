@@ -17,3 +17,6 @@ jobs:
       - name: Check icon recovery
         shell: powershell
         run: ./valkyrie-asi-suite/tools/test-phone-ui.ps1
+      - name: Device reset shim regression
+        shell: powershell
+        run: ./valkyrie-asi-suite/tools/test-device-hooks.ps1
