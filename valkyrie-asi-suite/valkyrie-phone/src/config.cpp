@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "bundle.h"
+#include "app_icon.h"
 #include "log.h"
 
 namespace config {
@@ -190,7 +191,7 @@ const Section kSections[] = {
      "[Icons]\r\n"
      "; Each app's icon. One of:\r\n"
      ";   a picture in valkyrie-phone.txd (app_phone, app_text, app_contacts,\r\n"
-     ";   app_photos, app_clock, app_internet, app_settings, app_games,\r\n"
+     ";   app_camera, app_photos, app_clock, app_internet, app_settings, app_games,\r\n"
      ";   app_calculator, app_notes, app_maps, app_weather, app_stocks, app_radio,\r\n"
      ";   app_calendar, app_flashlight);\r\n"
      ";   hud:NAME for one of the game's radar icons in models\\hud.txd, such as\r\n"
@@ -199,8 +200,8 @@ const Section kSections[] = {
      "Phone=app_phone\r\n"
      "Text=app_text\r\n"
      "Contacts=app_contacts\r\n"
-     "Camera=app_photos\r\n"
-     "Photos=hud:radar_1hourphoto\r\n"
+     "Camera=app_camera\r\n"
+     "Photos=app_photos\r\n"
      "Maps=app_maps\r\n"
      "Weather=app_weather\r\n"
      "Stocks=app_stocks\r\n"
@@ -212,7 +213,7 @@ const Section kSections[] = {
      "Calculator=app_calculator\r\n"
      "Notes=app_notes\r\n"
      "Flashlight=app_flashlight\r\n"
-     "Settings=hud:radar_modGarage\r\n"
+     "Settings=app_settings\r\n"
      "\r\n"
      "[Labels]\r\n"
      "; The name under each icon.\r\n"
@@ -636,14 +637,14 @@ void Load(const std::string& gameDir) {
     c.dock = list("Dock", "Phone,Text,Internet,Games");
     if (c.dock.size() > 4) c.dock.resize(4);
     static const std::map<std::string, std::string> kIcons = {
-        {"Phone", "app_phone"}, {"Text", "app_text"}, {"Contacts", "app_contacts"}, {"Camera", "app_photos"},
-        {"Photos", "hud:radar_1hourphoto"}, {"Maps", "app_maps"}, {"Internet", "app_internet"}, {"Games", "app_games"},
+        {"Phone", "app_phone"}, {"Text", "app_text"}, {"Contacts", "app_contacts"}, {"Camera", "app_camera"},
+        {"Photos", "app_photos"}, {"Maps", "app_maps"}, {"Internet", "app_internet"}, {"Games", "app_games"},
         {"Clock", "app_clock"}, {"Calculator", "app_calculator"}, {"Notes", "app_notes"},
-        {"Settings", "hud:radar_modGarage"}, {"Weather", "app_weather"}, {"Stocks", "app_stocks"},
+        {"Settings", "app_settings"}, {"Weather", "app_weather"}, {"Stocks", "app_stocks"},
         {"Radio", "app_radio"}, {"Calendar", "app_calendar"}, {"Flashlight", "app_flashlight"}};
     for (auto* apps : {&c.apps, &c.dock}) {
         for (App& a : *apps) {
-            a.icon = Read(ini, "Icons", a.id.c_str(), kIcons.at(a.id).c_str());
+            a.icon = phone_icons::UpgradeDefault(a.id, Read(ini, "Icons", a.id.c_str(), kIcons.at(a.id).c_str()));
             a.label = Read(ini, "Labels", a.id.c_str(), a.id.c_str());
         }
         // [Features] Maps=0: no Maps app, wherever the lists or a saved home

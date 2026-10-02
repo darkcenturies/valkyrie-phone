@@ -23,6 +23,7 @@ output into valkyrie-phone.txd during the build. It also writes
 """
 import math
 import os
+import argparse
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -30,11 +31,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "..", "assets")
 OUT = os.path.join(ASSETS, "generated")
 SS = 4  # supersampling factor
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--apps-only', action='store_true', help='Regenerate only home-screen app icons.')
+args = parser.parse_args()
 
 # Regenerate the base artwork without deleting independently generated skins.
 os.makedirs(OUT, exist_ok=True)
 for old in os.listdir(OUT):
-    if not old.startswith("sm_"):
+    if not args.apps_only and not old.startswith("sm_"):
         os.remove(os.path.join(OUT, old))
 
 BLACK = (0, 0, 0, 255)
@@ -327,6 +331,8 @@ def radar_icon(shape, fill, name, extra=None):
     hard white glint; and a little grain, as their compression leaves."""
     import random
     rng = random.Random(name)
+    app = name.startswith('app_')
+    pixels = 32 if app else RADAR
     mask = shape.getchannel("A").point(lambda v: 255 if v > 100 else 0)
     base = fill[:3]
     light = tuple(min(255, int(c * 1.25 + 40)) for c in base)
@@ -348,19 +354,19 @@ def radar_icon(shape, fill, name, extra=None):
     bb = mask.getbbox()
     if bb:
         crop = img.crop(bb)
-        f = IS * 0.8 / max(crop.size)
+        f = IS * (0.70 if app else 0.8) / max(crop.size)
         crop = crop.resize((max(1, int(crop.width * f)), max(1, int(crop.height * f))), Image.LANCZOS)
         img = Image.new("RGBA", (IS, IS), (0, 0, 0, 0))
         img.alpha_composite(crop, ((IS - crop.width) // 2, (IS - crop.height) // 2))
-    small = img.resize((RADAR, RADAR), Image.BOX)
+    small = img.resize((pixels, pixels), Image.BOX)
     hard = small.getchannel("A").point(lambda v: 255 if v > 110 else 0)
     # A darker rim one pixel inside the edge.
     inner = hard.filter(ImageFilter.MinFilter(3))
     rim = ImageChops.subtract(hard, inner)
     rim_colour = tuple(int(c * 0.4) for c in base) + (255,)
-    out = Image.new("RGBA", (RADAR, RADAR), (0, 0, 0, 0))
-    # The black edge: four pixels round the shape, as thick as the game's.
-    out.alpha_composite(fill_mask(hard.filter(ImageFilter.MaxFilter(9)), BLACK))
+    out = Image.new("RGBA", (pixels, pixels), (0, 0, 0, 0))
+    # App outlines are six pixels wide at the final size; other glyphs retain four.
+    out.alpha_composite(fill_mask(hard.filter(ImageFilter.MaxFilter(7 if app else 9)), BLACK))
     body = small.copy()
     body.putalpha(hard)
     out.alpha_composite(body)
@@ -369,18 +375,22 @@ def radar_icon(shape, fill, name, extra=None):
     bb = inner.getbbox()
     if bb:
         gx, gy = bb[0] + (bb[2] - bb[0]) * 0.22, bb[1] + (bb[3] - bb[1]) * 0.18
-        glint = Image.new("L", (RADAR, RADAR), 0)
-        ImageDraw.Draw(glint).ellipse((gx - 3, gy - 1.5, gx + 3, gy + 1.5), fill=255)
+        glint = Image.new("L", (pixels, pixels), 0)
+        extent = 1.5 if app else 3
+        ImageDraw.Draw(glint).ellipse((gx - extent, gy - extent * 0.5, gx + extent, gy + extent * 0.5), fill=255)
         glint = ImageChops.multiply(glint, inner)
         out.alpha_composite(fill_mask(glint, (255, 255, 255, 230)))
     # Grain.
     opx = out.load()
-    for y in range(RADAR):
-        for x in range(RADAR):
+    for y in range(pixels):
+        for x in range(pixels):
             r, g, b, a = opx[x, y]
             if a and (r, g, b) != (0, 0, 0):
                 n = rng.randint(-9, 9)
                 opx[x, y] = (max(0, min(255, r + n)), max(0, min(255, g + n)), max(0, min(255, b + n)), a)
+    if app:
+        # Keep the coarse two-pixel steps of the stock spanner icon.
+        out = out.resize((RADAR, RADAR), Image.Resampling.NEAREST)
     out.save(os.path.join(OUT, name + ".png"))
 
 
@@ -1022,14 +1032,26 @@ def glyphs():
 
 
 
-def icons():
+def wrench_shape():
+    s = canvas()
+    points = [(0.68, 0.08), (0.90, 0.13), (0.73, 0.31), (0.75, 0.40),
+              (0.93, 0.23), (0.95, 0.43), (0.79, 0.55), (0.63, 0.53),
+              (0.29, 0.90), (0.12, 0.87), (0.09, 0.70), (0.49, 0.35),
+              (0.48, 0.19), (0.59, 0.10)]
+    d = ImageDraw.Draw(s)
+    d.polygon([(x * IS, y * IS) for x, y in points], fill=WHITE)
+    return s
+
+
+def icons(only_apps=False):
     radar_icon(handset_shape(), (70, 190, 60, 255), "app_phone")
     radar_icon(bubble_shape(), (250, 250, 250, 255), "app_text")
     radar_icon(person_shape(), (240, 190, 70, 255), "app_contacts")
     radar_icon(disc_shape(), (250, 250, 250, 255), "app_clock", clock_extra)
     radar_icon(disc_shape(), (80, 150, 230, 255), "app_internet", globe_extra)
-    radar_icon(gear_shape(), (170, 172, 180, 255), "app_settings")
-    radar_icon(camera_shape(), (110, 110, 118, 255), "app_photos", camera_extra)
+    radar_icon(wrench_shape(), (220, 30, 25, 255), "app_settings")
+    radar_icon(camera_shape(), (110, 110, 118, 255), "app_camera", camera_extra)
+    radar_icon(g_picture(), (250, 250, 250, 255), "app_photos", x_picture)
     radar_icon(joystick_shape(), (150, 152, 160, 255), "app_games", joystick_extra)
     radar_icon(calculator_shape(), (70, 70, 76, 255), "app_calculator", calculator_extra)
     radar_icon(notes_shape(), (245, 225, 110, 255), "app_notes", notes_extra)
@@ -1039,6 +1061,8 @@ def icons():
     radar_icon(radio_shape(), (210, 60, 55, 255), "app_radio", radio_extra)
     radar_icon(calendar_shape(), (245, 245, 248, 255), "app_calendar", calendar_extra)
     radar_icon(flashlight_shape(), (250, 200, 50, 255), "app_flashlight", flashlight_extra)
+    if only_apps:
+        return
     weather_glyphs()
     game_icons()
     glyphs()
@@ -1320,6 +1344,10 @@ def brands():
 
 
 if __name__ == "__main__":
+    if args.apps_only:
+        icons(only_apps=True)
+        print('Wrote 17 home-screen app icons without touching other artwork.')
+        raise SystemExit(0)
     body()
     brands()
     icons()
