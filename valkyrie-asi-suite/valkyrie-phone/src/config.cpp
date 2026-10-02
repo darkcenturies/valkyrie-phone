@@ -57,7 +57,7 @@ const Section kSections[] = {
      "; keypad, black with three keys ringed in teal under a menu of\r\n"
      "; tiles. [Look]'s colours left as they ship take the skin's own.\r\n"
      "Skin=iFruit\r\n"
-     "; 16: native pixel icons (default). 64: the older detailed icon set.\r\n"
+     "; 16: pixel icons (default). 64: older detailed artwork.\r\n"
      "IconSize=16\r\n"
      "; How strongly its display shows its pixels' red, green and blue stripes, from\r\n"
      "; 0 (none) to 1.\r\n"
@@ -331,49 +331,37 @@ const Section kSections[] = {
      "Flash=0\r\n"},
     {"Animations",
      "\r\n[Animations]\r\n"
-     "; Authored left-hand phone actions are bundled in vp_phone.\r\n"
-     "; Each action takes a clip, its block, and whether it loops\r\n"
+     "; What CJ does with the phone: an animation, the .ifp it is in (ped is\r\n"
+     "; always loaded; any other is loaded when needed), and whether it loops\r\n"
      "; (1) or holds its last frame (0).\r\n"
      "; Looking at the phone while it is up:\r\n"
-     "TakeOut=vp_takeout\r\n"
-     "TakeOutFile=vp_phone\r\n"
+     "TakeOut=betslp_in\r\n"
+     "TakeOutFile=otb\r\n"
      "TakeOutLoop=0\r\n"
-     "Use=vp_use\r\n"
-     "UseFile=vp_phone\r\n"
+     "Use=betslp_lkabt\r\n"
+     "UseFile=otb\r\n"
      "UseLoop=1\r\n"
      "; Typing uses the hand movement only while a field changes.\r\n"
-     "Type=vp_type\r\n"
-     "TypeFile=vp_phone\r\n"
+     "Type=betslp_loop\r\n"
+     "TypeFile=otb\r\n"
      "TypeLoop=1\r\n"
-     "PutAway=vp_putaway\r\n"
-     "PutAwayFile=vp_phone\r\n"
+     "PutAway=betslp_out\r\n"
+     "PutAwayFile=otb\r\n"
      "PutAwayLoop=0\r\n"
      "; Holding it up to take a picture:\r\n"
-     "Camera=vp_camera\r\n"
-     "CameraFile=vp_phone\r\n"
+     "Camera=picstnd_in\r\n"
+     "CameraFile=camera\r\n"
      "CameraLoop=0\r\n"
-     "; Front camera extends the left arm for a selfie:\r\n"
-     "Selfie=vp_selfie\r\n"
-     "SelfieFile=vp_phone\r\n"
+     "; Front camera uses SA's stock photography stance:\r\n"
+     "Selfie=picstnd_in\r\n"
+     "SelfieFile=camera\r\n"
      "SelfieLoop=0\r\n"
-     "Photo=vp_photo\r\n"
-     "PhotoFile=vp_phone\r\n"
+     "Photo=picstnd_take\r\n"
+     "PhotoFile=camera\r\n"
      "PhotoLoop=0\r\n"
-     "CameraOut=vp_camera_out\r\n"
-     "CameraOutFile=vp_phone\r\n"
+     "CameraOut=picstnd_out\r\n"
+     "CameraOutFile=camera\r\n"
      "CameraOutLoop=0\r\n"
-     "Hold=vp_hold\r\n"
-     "HoldFile=vp_phone\r\n"
-     "HoldLoop=1\r\n"
-     "CallIn=vp_call_in\r\n"
-     "CallInFile=vp_phone\r\n"
-     "CallInLoop=0\r\n"
-     "Call=vp_call\r\n"
-     "CallFile=vp_phone\r\n"
-     "CallLoop=1\r\n"
-     "CallOut=vp_call_out\r\n"
-     "CallOutFile=vp_phone\r\n"
-     "CallOutLoop=0\r\n"
      "; Where the phone's lens is in each pose, in metres from CJ's middle:\r\n"
      "; to his right, in front of him, up. Match these to the animations above.\r\n"
      "CameraLens=0.05,0.60,0.65\r\n"
@@ -772,17 +760,17 @@ void Load(const std::string& gameDir) {
         if (a.file.empty()) a.file = "ped";
         return a;
     };
-    c.takeOutAnim = anim("TakeOut", "vp_takeout", "vp_phone", false);
-    c.useAnim = anim("Use", "vp_use", "vp_phone", true);
-    c.typeAnim = anim("Type", "vp_type", "vp_phone", true);
-    c.putAwayAnim = anim("PutAway", "vp_putaway", "vp_phone", false);
-    c.cameraAnim = anim("Camera", "vp_camera", "vp_phone", false);
+    c.takeOutAnim = anim("TakeOut", "betslp_in", "otb", false);
+    c.useAnim = anim("Use", "betslp_lkabt", "otb", true);
+    c.typeAnim = anim("Type", "betslp_loop", "otb", true);
+    c.putAwayAnim = anim("PutAway", "betslp_out", "otb", false);
+    c.cameraAnim = anim("Camera", "picstnd_in", "camera", false);
     // An older file kept the selfie pose under [Camera].
     const std::string oldSelfie = Read(ini, "Camera", "SelfieAnim", "ARRESTgun");
     const std::string oldSelfieFile = Read(ini, "Camera", "SelfieAnimFile", "ped");
     c.selfieAnim = anim("Selfie", oldSelfie.c_str(), oldSelfieFile.c_str(), false);
-    c.photoAnim = anim("Photo", "vp_photo", "vp_phone", false);
-    c.cameraOutAnim = anim("CameraOut", "vp_camera_out", "vp_phone", false);
+    c.photoAnim = anim("Photo", "picstnd_take", "camera", false);
+    c.cameraOutAnim = anim("CameraOut", "picstnd_out", "camera", false);
     // Upgrade only the old shipped placeholders; retain independent custom choices.
     auto upgrade = [&](Anim& a, const char* key, const char* oldName, const char* oldFile, bool oldLoop,
                        const char* name, const char* file, bool loop) {
@@ -794,20 +782,17 @@ void Load(const std::string& gameDir) {
         WritePrivateProfileStringA("Animations", (k + "Loop").c_str(), loop ? "1" : "0", ini.c_str());
         return true;
     };
-    upgrade(c.takeOutAnim, "TakeOut", "betslp_in", "otb", false, "vp_takeout", "vp_phone", false);
-    upgrade(c.useAnim, "Use", "betslp_lkabt", "otb", true, "vp_use", "vp_phone", true);
-    upgrade(c.typeAnim, "Type", "betslp_loop", "otb", true, "vp_type", "vp_phone", true);
-    upgrade(c.putAwayAnim, "PutAway", "betslp_out", "otb", false, "vp_putaway", "vp_phone", false);
-    upgrade(c.cameraAnim, "Camera", "picstnd_in", "camera", false, "vp_camera", "vp_phone", false);
-    upgrade(c.selfieAnim, "Selfie", "picstnd_in", "camera", false, "vp_selfie", "vp_phone", false);
-    upgrade(c.photoAnim, "Photo", "picstnd_take", "camera", false, "vp_photo", "vp_phone", false);
-    upgrade(c.cameraOutAnim, "CameraOut", "picstnd_out", "camera", false, "vp_camera_out", "vp_phone", false);
-    upgrade(c.useAnim, "Use", "betslp_loop", "otb", true, "vp_use", "vp_phone", true);
-    const bool upgradedSelfie = upgrade(c.selfieAnim, "Selfie", "ARRESTgun", "ped", false, "vp_selfie", "vp_phone", false);
-    c.holdAnim = anim("Hold", "vp_hold", "vp_phone", true);
-    c.callInAnim = anim("CallIn", "vp_call_in", "vp_phone", false);
-    c.callAnim = anim("Call", "vp_call", "vp_phone", true);
-    c.callOutAnim = anim("CallOut", "vp_call_out", "vp_phone", false);
+    // Remove only defaults written by the retired authored animation builds.
+    upgrade(c.takeOutAnim, "TakeOut", "vp_takeout", "vp_phone", false, "betslp_in", "otb", false);
+    upgrade(c.useAnim, "Use", "vp_use", "vp_phone", true, "betslp_lkabt", "otb", true);
+    upgrade(c.typeAnim, "Type", "vp_type", "vp_phone", true, "betslp_loop", "otb", true);
+    upgrade(c.putAwayAnim, "PutAway", "vp_putaway", "vp_phone", false, "betslp_out", "otb", false);
+    upgrade(c.cameraAnim, "Camera", "vp_camera", "vp_phone", false, "picstnd_in", "camera", false);
+    upgrade(c.selfieAnim, "Selfie", "vp_selfie", "vp_phone", false, "picstnd_in", "camera", false);
+    upgrade(c.photoAnim, "Photo", "vp_photo", "vp_phone", false, "picstnd_take", "camera", false);
+    upgrade(c.cameraOutAnim, "CameraOut", "vp_camera_out", "vp_phone", false, "picstnd_out", "camera", false);
+    upgrade(c.useAnim, "Use", "betslp_loop", "otb", true, "betslp_lkabt", "otb", true);
+    const bool upgradedSelfie = upgrade(c.selfieAnim, "Selfie", "ARRESTgun", "ped", false, "picstnd_in", "camera", false);
     auto lens = [&](const char* key, Lens fallback) {
         const std::string text = Read(ini, "Animations", key, "");
         Lens l{};

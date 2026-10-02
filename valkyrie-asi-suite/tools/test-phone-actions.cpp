@@ -4,6 +4,14 @@
 #include <initializer_list>
 using namespace phone_actions;
 int main() {
+    assert(!NeedsHand(false, false, false, Pose::None)); // Tucked UI / weapon selection.
+    assert(NeedsHand(true, false, false, Pose::None)); // Right click starts take-out.
+    assert(NeedsHand(false, false, true, Pose::PutAway)); // Finish returning it.
+    assert(!NeedsHand(false, false, false, Pose::PutAway));
+    assert(NeedsHand(false, true, false, Pose::None));
+    assert(Next(Pose::None, Pose::Camera, false, true, false) == Pose::TakeOut);
+    assert(Next(Pose::TakeOut, Pose::Camera, false, true, false) == Pose::TakeOut);
+    assert(Next(Pose::TakeOut, Pose::Camera, true, true, false) == Pose::Camera);
     assert(Next(Pose::None, Pose::Use, false, true, false) == Pose::TakeOut);
     assert(Next(Pose::TakeOut, Pose::Use, false, true, false) == Pose::TakeOut);
     assert(Next(Pose::TakeOut, Pose::Use, true, true, false) == Pose::Use);
@@ -17,20 +25,14 @@ int main() {
     assert(Next(Pose::CameraOut, Pose::Use, false, true, false) == Pose::CameraOut);
     assert(Next(Pose::CameraOut, Pose::Use, true, true, false) == Pose::Use);
     assert(Next(Pose::Selfie, Pose::None, false, true, false) == Pose::CameraOut);
-    assert(Next(Pose::CameraOut, Pose::None, true, true, false) == Pose::PutAway);
+    assert(Next(Pose::CameraOut, Pose::None, true, true, false) == Pose::None);
     assert(Next(Pose::Use, Pose::None, false, true, false) == Pose::PutAway);
     assert(Next(Pose::PutAway, Pose::None, false, true, false) == Pose::PutAway);
     assert(Next(Pose::PutAway, Pose::None, true, true, false) == Pose::None);
     assert(Next(Pose::PutAway, Pose::Use, false, true, false) == Pose::TakeOut);
     assert(Next(Pose::CameraOut, Pose::Selfie, false, true, false) == Pose::Selfie);
-    assert(Next(Pose::Use, Pose::Call, false, true, false) == Pose::CallIn);
-    assert(Next(Pose::CallIn, Pose::Call, false, true, false) == Pose::CallIn);
-    assert(Next(Pose::CallIn, Pose::Call, true, true, false) == Pose::Call);
-    assert(Next(Pose::Call, Pose::Hold, false, true, false) == Pose::CallOut);
-    assert(Next(Pose::CallOut, Pose::Hold, true, true, false) == Pose::Hold);
-    assert(Next(Pose::CallOut, Pose::None, true, true, false) == Pose::PutAway);
     for (auto p : {Pose::TakeOut, Pose::Use, Pose::Type, Pose::Camera, Pose::Selfie, Pose::Photo,
-                   Pose::CameraOut, Pose::PutAway, Pose::Hold, Pose::CallIn, Pose::Call, Pose::CallOut}) {
+                   Pose::CameraOut, Pose::PutAway}) {
         assert(Next(p, Pose::Use, false, false, true) == Pose::None);
     }
     assert(LegacyDefault("BETSLP_LOOP", "OTB", true, "betslp_loop", "otb", true));

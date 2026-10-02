@@ -15,30 +15,28 @@ constexpr bool LegacyDefault(std::string_view name, std::string_view file, bool 
                              std::string_view oldName, std::string_view oldFile, bool oldLoop) {
     return SameName(name, oldName) && SameName(file, oldFile) && loop == oldLoop;
 }
-enum class Pose { None, TakeOut, Hold, Use, Type, Camera, Selfie, Photo, CameraOut, PutAway, CallIn, Call, CallOut };
+enum class Pose { None, TakeOut, Use, Type, Camera, Selfie, Photo, CameraOut, PutAway };
+constexpr bool NeedsHand(bool focused, bool camera, bool playing, Pose pose) {
+    return focused || camera || (playing && pose != Pose::None);
+}
 constexpr bool CameraPose(Pose p) { return p == Pose::Camera || p == Pose::Selfie || p == Pose::Photo; }
 constexpr bool OneShot(Pose p) {
-    return p == Pose::TakeOut || p == Pose::Photo || p == Pose::CameraOut || p == Pose::PutAway ||
-           p == Pose::CallIn || p == Pose::CallOut;
+    return p == Pose::TakeOut || p == Pose::Photo || p == Pose::CameraOut || p == Pose::PutAway;
 }
 constexpr bool ResumeHeldCamera(Pose from, Pose to) {
     return from == Pose::Photo && (to == Pose::Camera || to == Pose::Selfie);
 }
-constexpr bool Leaving(Pose p) { return p == Pose::CameraOut || p == Pose::PutAway || p == Pose::CallOut; }
+constexpr bool Leaving(Pose p) { return p == Pose::CameraOut || p == Pose::PutAway; }
 constexpr Pose Next(Pose current, Pose desired, bool complete, bool allowed, bool shutter) {
     if (!allowed) return Pose::None; // Calls, vehicles, falls and mission tasks always win.
-    if (desired == Pose::Call) {
-        if (current == Pose::Call || current == Pose::CallIn) return current == Pose::CallIn && !complete ? current : Pose::Call;
-        return Pose::CallIn;
-    }
-    if (current == Pose::Call || current == Pose::CallIn) return Pose::CallOut;
-    if (current == Pose::CallOut) return complete ? (desired == Pose::None ? Pose::PutAway : desired) : current;
+    if ((current == Pose::None || current == Pose::PutAway) && desired != Pose::None) return Pose::TakeOut;
+    if (current == Pose::TakeOut && !complete && desired != Pose::None) return Pose::TakeOut;
     if (shutter && CameraPose(desired)) return Pose::Photo;
     if (current == Pose::Photo && !complete && CameraPose(desired)) return Pose::Photo;
     if (CameraPose(current) && !CameraPose(desired)) return Pose::CameraOut;
     if (current == Pose::CameraOut) {
         if (CameraPose(desired)) return desired;
-        return complete ? (desired == Pose::None ? Pose::PutAway : desired) : current;
+        return complete ? desired : current;
     }
     if (desired == Pose::None) {
         if (current == Pose::None || (current == Pose::PutAway && complete)) return Pose::None;

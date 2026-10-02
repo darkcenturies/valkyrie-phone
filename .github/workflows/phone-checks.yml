@@ -16,14 +16,12 @@ jobs:
           python-version: '3.12'
       - name: Install page builder
         run: |
-          python -m pip install Pillow playwright numpy
+          python -m pip install Pillow playwright
           python -m playwright install chromium
       - name: Verify generated map builder
         run: python valkyrie-asi-suite/tools/make-phone-map-builder.py --check
-      - name: Verify authored phone animations and icon sets
-        run: |
-          python valkyrie-asi-suite/valkyrie-phone/tools/generate-phone-animations.py --check
-          python valkyrie-asi-suite/tools/test-phone-animation-pack.py
+      - name: Verify both icon sets
+        run: python valkyrie-asi-suite/tools/test-phone-icon-sets.py
       - name: Build x86 phone with authored offline SA pages
         shell: powershell
         run: ./valkyrie-asi-suite/build.ps1 -Release
@@ -86,7 +84,7 @@ jobs:
 
           Optional weapon mode requires Modloader 0.3.10 and fastman92 7.6 installed separately. Its configurations are already prepared; copy the supplied game-folder files. Internet includes eight authored offline SA pages. GTA IV page packs remain personal local build inputs.
 
-          Includes new left-hand phone animations for holding, typing, calls, rear-camera photos and selfies. IconSize=16 is the default pixel artwork; IconSize=64 selects the older detailed set. The original Settings wrench stays unchanged.
+          Reuses GTA SA animation blocks for phone actions and native calls. The handset appears when right-click raises the tucked phone UI. IconSize=16 is the default pixel artwork; IconSize=64 selects the older detailed set. The original Settings wrench stays unchanged.
 
           The phone captures its reflection before the HUD, keeping the radar and other HUD overlays out of the glass.
           "@ | Set-Content build/release-notes.md

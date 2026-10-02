@@ -37,9 +37,9 @@ already gives every player its own phone.
 
 | Input | Does |
 | --- | --- |
-| **P** | Take the phone out; CJ holds it in his left hand. It is an item of its own, not a weapon: his weapon is put away for it, no weapon can be drawn while he holds it, and the HUD's weapon icon shows the phone. Again: put it away. Set `Key` in `valkyrie-phone.ini`. |
+| **P** | Show or close the tucked phone UI. It does not draw a handset or play take-out. Set `Key` in `valkyrie-phone.ini`. |
 | Mouse | A cursor appears on the phone; click to tap. Walking, the camera and firing are held while it is up. |
-| Right mouse button | Lower the phone out of the way and get your controls back, for example during a call. **P** raises it again. |
+| Right mouse button | Fully raise the tucked phone and play take-out; click again to lower it and return game controls. The model remains briefly during put-away. |
 | Esc | Put the phone away. |
 | Swimming | The phone goes back in the pocket (a call stays at CJ's ear), and cannot be taken out until he is out of the water. |
 | Keyboard | Types into whichever field is open. Enter sends, calls or saves. Up and Down move between a contact's name and number. |
@@ -217,16 +217,31 @@ because there are none:
   in-game camera does (the menu's "save photos" is switched on for each
   one). With `[Photos] Shape=Portrait` the saved picture is then cut to the
   viewfinder's upright shape.
-- **CJ's phone actions.** Eighteen original upper-body clips are embedded in
-  the ASI. The left hand holds the phone; actions include taking it out,
-  lowered holding, reading, typing, calls, rear-camera photos, selfies,
-  shutter presses and putting it away. Camera flips and exits have their own
-  transitions. No separate animation installation is needed.
-  Story calls, falls, swimming, vehicles and protected tasks take priority.
-  Cleanup fades only the phone's association. `[Animations]` selects clip,
-  block and looping; old shipped placeholders upgrade automatically while
-  custom choices remain. See [animation source](assets/animations/README.md).
-  This test build still needs in-game checks of motion and handset alignment.
+- **CJ's phone actions.** GTA SA's stock clips play as complete actions:
+  take out, hold/read, type while a field changes, frame/take/lower a photo,
+  and put away. Calls keep the native `phone_in`, `phone_talk`, `phone_out`
+  sequence, including speaker transitions. Phone poses wait for the return
+  from the ear before starting. Lowering releases input immediately; the
+  held model remains until its outgoing animation finishes. Falls, swimming,
+  vehicle entry and mission tasks cancel phone animations. Cleanup fades
+  only the phone's association, without clearing CJ's other tasks.
+
+  | Action | Stock clip / block |
+  | --- | --- |
+  | Take out | `betslp_in` / `otb` |
+  | Hold/read | `betslp_lkabt` / `otb` |
+  | Type | `betslp_loop` / `otb`, only while editing |
+  | Put away / lower | `betslp_out` / `otb` |
+  | Camera and front camera | `picstnd_in` / `camera`, held after raising |
+  | Take a photo | `picstnd_take` / `camera` |
+  | Lower camera | `picstnd_out` / `camera` |
+
+  SA has no dedicated selfie or smartphone animation. These are its existing
+  ticket-handling and photography clips adapted to the handset; front-camera
+  mode uses the stock photography stance rather than the old arrest pose.
+  No animation files are shipped: clips come from the player's own game.
+  `[Animations]` lets you choose alternatives. Old shipped browsing/selfie
+  defaults upgrade; independent custom choices remain.
 - **Photos.** The Camera Roll (the Gallery folder, newest first, with the
   camera one tap away and pictures thrown into the Windows Recycle Bin) and
   the server's 27 wallpapers, with their SP-RP names.
@@ -402,6 +417,9 @@ first time the phone starts:
 
 A section taken out falls back to what ships; a section a newer phone adds
 is appended to an older file without touching the rest.
+
+The tucked UI does not draw a handset or play take-out. Right-click raises it;
+the handset remains briefly while its put-away action finishes.
 
 ## Art
 
