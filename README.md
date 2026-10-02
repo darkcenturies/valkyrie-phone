@@ -23,6 +23,16 @@ and [source maintenance](MAINTENANCE.md). Native compilation and isolated tests
 are separate from in-game startup, camera, device-reset and weapon validation.
 The release packages now target GTA San Andreas only.
 
+Home-screen apps fall back to their bundled artwork when a custom or HUD icon
+cannot load. HUD icons that become available after the first lookup are retried.
+Builds refuse to package missing built-in app artwork.
+
+The stock map builder's readable sources are in `valkyrie-asi-suite/tools/map-data`.
+`python valkyrie-asi-suite/tools/make-phone-map-builder.py --check` verifies the
+one-file distributable against those sources. Sample builds never install tiles
+or share their caches with a full build. Add `-SkipInstall` to a full build to
+prepare data without copying it into the game.
+
 ## Optional content and validation
 
 The core build includes the phone's artwork, held model, textures, tones and

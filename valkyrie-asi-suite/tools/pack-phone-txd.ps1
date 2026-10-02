@@ -1,4 +1,5 @@
-param([Parameter(Mandatory=$true)][string]$Source, [Parameter(Mandatory=$true)][string]$Output)
+param([Parameter(Mandatory=$true)][string]$Source, [Parameter(Mandatory=$true)][string]$Output,
+      [string[]]$RequiredNames = @())
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Drawing
 # Packs every PNG in $Source into one uncompressed A8R8G8B8 texture dictionary,
@@ -12,6 +13,11 @@ function Chunk([uint32]$type,[byte[]]$data) {
 function IsPow2([int]$v) { return $v -gt 0 -and ($v -band ($v-1)) -eq 0 }
 $files=@(Get-ChildItem -LiteralPath $Source -Filter *.png | Sort-Object Name)
 if(!$files.Count -or $files.Count -gt 65535){throw 'Invalid texture count'}
+foreach ($requiredName in $RequiredNames) {
+    if (-not ($files | Where-Object { $_.BaseName -ieq $requiredName })) {
+        throw "Required phone artwork is missing: $requiredName.png"
+    }
+}
 $dict=[IO.MemoryStream]::new();$out=[IO.BinaryWriter]::new($dict)
 $out.Write((Chunk 1 ([BitConverter]::GetBytes([uint16]$files.Count)+[byte[]]@(0,0))))
 foreach($file in $files) {

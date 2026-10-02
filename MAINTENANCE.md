@@ -11,6 +11,11 @@ adaptations. Preserve them when bringing over shared fixes. Contributions here
 must be reconciled into the integration source before its next export; the
 sync tool refuses to overwrite independent changes.
 
+The one-file map builder is generated from readable `tools/map-data` sources;
+the reviewed import manifest pins the standalone Radar inputs. Keep game-derived
+output out of Git. Validate changes with `tools/make-phone-map-builder.py --check`
+and `tools/test-phone-ui.ps1`, as well as the native build and startup tests.
+
 Other homes:
 
 - `darkcenturies/valkyrie-workshop`: shared development, Atmosphere and private mods.
