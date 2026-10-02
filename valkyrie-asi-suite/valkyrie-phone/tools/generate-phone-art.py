@@ -987,21 +987,16 @@ def ui_controls():
 def camera_controls():
     """The viewfinder's shutter button, a white disc in a white ring as the
     phone's camera has, and a plain disc for round buttons and thumbnails."""
-    S = 128 * SS
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.ellipse((0, 0, S - 1, S - 1), fill=BLACK)
-    e = S * 0.04
-    d.ellipse((e, e, S - e, S - e), fill=(250, 250, 250, 255))
-    g = S * 0.1
-    d.ellipse((g, g, S - g, S - g), fill=BLACK)
-    i = S * 0.13
-    d.ellipse((i, i, S - i, S - i), fill=(250, 250, 250, 255))
-    pixel_control(img, "cam_shutter")
-
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    ImageDraw.Draw(img).ellipse((0, 0, S - 1, S - 1), fill=(255, 255, 255, 255))
-    pixel_control(img, "disc")
+    d.ellipse((0, 0, 15, 15), fill=BLACK)
+    d.ellipse((2, 2, 13, 13), fill=(250, 250, 250, 255))
+    d.ellipse((4, 4, 11, 11), fill=BLACK)
+    d.ellipse((5, 5, 10, 10), fill=(250, 250, 250, 255))
+    img.save(os.path.join(OUT, "cam_shutter.png"))
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    ImageDraw.Draw(img).ellipse((0, 0, 15, 15), fill=(255, 255, 255, 255))
+    img.save(os.path.join(OUT, "disc.png"))
 
 
 def glyphs():
@@ -1226,20 +1221,17 @@ def weather_glyphs():
 
 def clock_face():
     """The Clock app's dial: white, black-edged, without hands."""
-    S = 256 * SS
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    c = S / 2
-    d.ellipse((0, 0, S - 1, S - 1), fill=BLACK)
-    fr = S * 0.46
-    d.ellipse((c - fr, c - fr, c + fr, c + fr), fill=(245, 245, 245, 255))
+    d.ellipse((0, 0, 15, 15), fill=BLACK)
+    d.ellipse((2, 2, 13, 13), fill=(245, 245, 245, 255))
     for i in range(12):
-        a = math.radians(i * 30)
-        major = i % 3 == 0
-        l0 = fr * (0.78 if major else 0.88)
-        d.line((c + math.cos(a) * l0, c + math.sin(a) * l0, c + math.cos(a) * fr * 0.95,
-                c + math.sin(a) * fr * 0.95), fill=BLACK, width=int(S * (0.018 if major else 0.006)))
-    pixel_control(img, "clock_face")
+        angle = math.radians(i * 30)
+        radius = 4.5
+        x = round(7.5 + math.cos(angle) * radius)
+        y = round(7.5 + math.sin(angle) * radius)
+        d.point((x, y), fill=BLACK)
+    img.save(os.path.join(OUT, "clock_face.png"))
 
 
 def boot_mark():
