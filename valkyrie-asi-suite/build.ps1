@@ -21,7 +21,9 @@ param(
     # GTA IV, for the phone's browser: its internet is built from the
     # player's own copy (valkyrie-phone\tools\iv-web). Found through Steam
     # or Rockstar's own registry key when not given.
-    [string] $Gta4Path
+    [string] $Gta4Path,
+    # Optional existing VWEB pack from the player's own local build.
+    [string] $WebPackPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -206,7 +208,18 @@ foreach ($targetSpec in $targets) {
         # Delete build\valkyrie-web.dat to build it again.
         $keptPack = Join-Path $root "valkyrie-phone\assets\web\valkyrie-web.dat"
         $webPack = Join-Path $build "valkyrie-web.dat"
-        if (-not (Test-Path -LiteralPath $webPack) -or -not [string]::IsNullOrWhiteSpace($Gta4Path)) {
+        if (-not [string]::IsNullOrWhiteSpace($WebPackPath)) {
+            if (-not [string]::IsNullOrWhiteSpace($Gta4Path)) { throw "Choose -WebPackPath or -Gta4Path, not both." }
+            $suppliedPack = (Resolve-Path -LiteralPath $WebPackPath).Path
+            $header = [IO.File]::ReadAllBytes($suppliedPack)
+            if ($header.Length -lt 24 -or [Text.Encoding]::ASCII.GetString($header, 0, 4) -ne "VWEB" -or
+                [BitConverter]::ToUInt32($header, 4) -notin 1,2 -or [BitConverter]::ToUInt32($header, 8) -eq 0) {
+                throw "The supplied browser pack is not a nonempty supported VWEB file."
+            }
+            Write-Host "[build] supplied local browser pack: $([BitConverter]::ToUInt32($header, 8)) pages" -ForegroundColor Green
+            if ($suppliedPack -ne $webPack) { Copy-Item -LiteralPath $suppliedPack -Destination $webPack -Force }
+        }
+        elseif (-not (Test-Path -LiteralPath $webPack) -or -not [string]::IsNullOrWhiteSpace($Gta4Path)) {
             $iv = $Gta4Path
             if ([string]::IsNullOrWhiteSpace($iv)) {
                 $candidates = @()

@@ -71,6 +71,17 @@ build fails if its input is missing or conversion fails. Local builds can also r
 pack or discover a local GTA IV install. **Actions uses a clean checkout and
 ships only the eight authored SA pages.** See [browser details and limitations](valkyrie-asi-suite/valkyrie-phone/README.md#the-internet).
 
+To restore a page pack from a previous personal build instead of converting
+GTA IV again, use its existing VWEB file:
+
+```powershell
+./valkyrie-asi-suite/build.ps1 -Release -WebPackPath "C:\PhoneAssets\valkyrie-web.dat"
+```
+
+This embeds that supplied local content in your ASI and prints its page count.
+It is a personal build input, not content included in the Actions artifact.
+Use one of `-Gta4Path` or `-WebPackPath`. Neither uploads the input to GitHub.
+
 Build/tests establish package completeness; in-game startup, camera, maps,
 device resets and appearance still require verification in the supported game.
 
