@@ -27,7 +27,7 @@ int main() {
     assert(phone_icons::Builtin("Photos") == "app_photos");
     assert(phone_icons::UpgradeDefault("Camera", "app_photos") == "app_camera");
     assert(phone_icons::UpgradeDefault("Photos", "hud:radar_1hourphoto") == "app_photos");
-    assert(phone_icons::UpgradeDefault("Settings", "hud:radar_modGarage") == "app_settings");
+    assert(phone_icons::UpgradeDefault("Settings", "hud:radar_modGarage") == "hud:radar_modGarage");
     assert(phone_icons::UpgradeDefault("Settings", "custom_wrench") == "custom_wrench");
     assert(phone_icons::UpgradeDefault("Photos", "custom_gallery") == "custom_gallery");
     ui::SetScreen(0, 0, 1);

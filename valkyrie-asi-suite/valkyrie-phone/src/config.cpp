@@ -213,7 +213,7 @@ const Section kSections[] = {
      "Calculator=app_calculator\r\n"
      "Notes=app_notes\r\n"
      "Flashlight=app_flashlight\r\n"
-     "Settings=app_settings\r\n"
+     "Settings=hud:radar_modGarage\r\n"
      "\r\n"
      "[Labels]\r\n"
      "; The name under each icon.\r\n"
@@ -640,7 +640,7 @@ void Load(const std::string& gameDir) {
         {"Phone", "app_phone"}, {"Text", "app_text"}, {"Contacts", "app_contacts"}, {"Camera", "app_camera"},
         {"Photos", "app_photos"}, {"Maps", "app_maps"}, {"Internet", "app_internet"}, {"Games", "app_games"},
         {"Clock", "app_clock"}, {"Calculator", "app_calculator"}, {"Notes", "app_notes"},
-        {"Settings", "app_settings"}, {"Weather", "app_weather"}, {"Stocks", "app_stocks"},
+        {"Settings", "hud:radar_modGarage"}, {"Weather", "app_weather"}, {"Stocks", "app_stocks"},
         {"Radio", "app_radio"}, {"Calendar", "app_calendar"}, {"Flashlight", "app_flashlight"}};
     for (auto* apps : {&c.apps, &c.dock}) {
         for (App& a : *apps) {

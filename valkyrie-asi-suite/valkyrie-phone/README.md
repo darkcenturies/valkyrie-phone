@@ -11,9 +11,10 @@ with a dock of four, a keypad with Add Contact, Call and Delete, the in-call
 screen's six buttons over End Call, grouped Settings, and the Clock's World
 Clock, Alarm, Stopwatch and Timer. It is drawn in San Andreas' own style: a heavy black outline
 like the HUD art, the subtitle font with its black edge, black help-box
-panels, and icons drawn the way the game's radar icons are (64 pixels, hard
-edges, a thick black outline, hard-banded shading and grain). Photos and
-Settings use the game's own radar icons and the cursor is the game's own, all
+panels, and icons drawn the way the game's radar icons are (16 pixels, hard
+edges, a thick black outline, hard-banded shading and grain). Camera and Photos
+have distinct bundled artwork. Settings retains GTA's original 16-pixel
+radar_modGarage wrench. It and the cursor are the game's own,
 loaded from the player's `models` folder.
 
 In CJ's hand it can be a model of its own (`valkyrie-phone-model.dff` and
