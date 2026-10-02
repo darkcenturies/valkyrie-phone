@@ -52,6 +52,7 @@ struct Config {
     int key = 'P';
     float height = 0.78f;
     bool right = true;
+    int iconSize = 16; // [Phone] IconSize: native pixel artwork or the legacy 64px set.
     // The model CJ holds while this phone is in use (phone_model.h).
     std::string model = "valkyrie-phone-model.dff", modelTextures = "valkyrie-phone-model.txd";
     // How much the model in CJ's hand reflects, 0 matt to 1 mirror-bright.
@@ -129,14 +130,18 @@ struct Config {
     bool liveView = true;
     // What CJ does with the phone: looking at it while it is up, holding it
     // up for a picture, holding it out for a selfie.
-    Anim takeOutAnim{"betslp_in", "otb", false};
-    Anim useAnim{"betslp_lkabt", "otb", true};
-    Anim typeAnim{"betslp_loop", "otb", true};
-    Anim putAwayAnim{"betslp_out", "otb", false};
-    Anim cameraAnim{"picstnd_in", "camera", false};
-    Anim selfieAnim{"picstnd_in", "camera", false};
-    Anim photoAnim{"picstnd_take", "camera", false};
-    Anim cameraOutAnim{"picstnd_out", "camera", false};
+    Anim takeOutAnim{"vp_takeout", "vp_phone", false};
+    Anim holdAnim{"vp_hold", "vp_phone", true};
+    Anim useAnim{"vp_use", "vp_phone", true};
+    Anim typeAnim{"vp_type", "vp_phone", true};
+    Anim putAwayAnim{"vp_putaway", "vp_phone", false};
+    Anim cameraAnim{"vp_camera", "vp_phone", false};
+    Anim selfieAnim{"vp_selfie", "vp_phone", false};
+    Anim photoAnim{"vp_photo", "vp_phone", false};
+    Anim cameraOutAnim{"vp_camera_out", "vp_phone", false};
+    Anim callInAnim{"vp_call_in", "vp_phone", false};
+    Anim callAnim{"vp_call", "vp_phone", true};
+    Anim callOutAnim{"vp_call_out", "vp_phone", false};
     // Where the lens is in the two camera poses.
     Lens cameraLens{0.05f, 0.60f, 0.65f};
     Lens selfieLens{0.05f, 0.60f, 0.65f};

@@ -41,7 +41,7 @@ foreach($file in $files) {
     $pixelArt = $name -match '^(app_|g_|w_|game_)' -or
         $name -in @('cam_shutter', 'disc', 'clock_face', 'glow') -or
         ($name.StartsWith('sm_') -and $name -notin @('sm_body', 'sm_back', 'sm_boot', 'sm_phone_normal', 'sm_phone_material'))
-    $filter = if ($pixelArt) { [uint32]0x3301 } else { [uint32]0x3302 }
+    $filter = if ($pixelArt -and -not $name.EndsWith('_64')) { [uint32]0x3301 } else { [uint32]0x3302 }
     $writer.Write([uint32]9);$writer.Write($filter)
     $label=[byte[]]::new(32);[Text.Encoding]::ASCII.GetBytes($name).CopyTo($label,0)
     $writer.Write($label);$writer.Write([byte[]]::new(32))

@@ -39,7 +39,7 @@ args = parser.parse_args()
 # Regenerate the base artwork without deleting independently generated skins.
 os.makedirs(OUT, exist_ok=True)
 for old in os.listdir(OUT):
-    if not (args.apps_only or args.ui_only) and not old.startswith("sm_"):
+    if not (args.apps_only or args.ui_only) and not old.startswith("sm_") and not old.endswith("_64.png"):
         os.remove(os.path.join(OUT, old))
 
 BLACK = (0, 0, 0, 255)

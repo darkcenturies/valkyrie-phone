@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "config.h"
 
 #include <algorithm>
 #include <cmath>
@@ -78,12 +79,14 @@ void SetDictionary(int slot) {
 }
 
 uintptr_t Tex(const char* name) {
-    auto it = g_textures.find(name);
+    const std::string selected = config::Get().iconSize == 64 ? std::string(name) + "_64" : name;
+    auto it = g_textures.find(selected);
     if (it != g_textures.end() && it->second) {
         return it->second;
     }
-    const uintptr_t t = sprite::Find(g_slot, name);
-    g_textures[name] = t;
+    uintptr_t t = sprite::Find(g_slot, selected.c_str());
+    if (!t && selected != name) t = sprite::Find(g_slot, name);
+    g_textures[selected] = t;
     return t;
 }
 

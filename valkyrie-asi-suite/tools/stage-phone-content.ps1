@@ -58,8 +58,7 @@ Set-Content -LiteralPath (Join-Path $Output 'README.md') -Encoding ASCII -Value 
 
 Close the game. Copy valkyrie-phone.asi, valkyrie-phone.ini and the
 valkyrie-radar-tiles folder into the game folder containing gta_sa.exe.
-An x86 ASI loader is required. Keep your existing phone INI when upgrading.
-Remove a separate valkyrie-trainer.asi if installed: the phone embeds it.
+An x86 ASI loader is required. Settings are in valkyrie-phone.ini.
 
 ## Controls and contents
 
@@ -67,6 +66,8 @@ Press P to open/close the phone; use the mouse to navigate.
 Calls, texts, contacts, camera, photos, flashlight, maps, services and trainer
 are included. Settings are in valkyrie-phone.ini. Call Trainer in Contacts
 or press Alt+Z for the trainer. Skin=Keypad selects the optional keypad handset.
+In [Phone], IconSize=16 uses the default pixel artwork; IconSize=64 selects
+the older detailed icons. The original GTA Settings wrench stays unchanged.
 Maps includes 142 generated stock SA tile pairs. Internet includes eight
 authored offline SA pages. External links open the desktop browser; GTA IV
 browser pages are personal local build inputs.
