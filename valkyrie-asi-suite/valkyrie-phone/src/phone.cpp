@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "arcade.h"
+#include "app_icon.h"
 #include "bundle.h"
 #include "config.h"
 #include "game.h"
@@ -1653,7 +1654,8 @@ void OpenApp(const std::string& id) {
 
 // An icon as the ini names it: hud:NAME from the game's radar icons, a
 // picture file from the game folder, or a texture of the phone's own.
-void Icon(const std::string& spec, float x, float y, float size, uint32_t tint) {
+void Icon(const std::string& spec, float x, float y, float size, uint32_t tint,
+          const std::string& fallback = "") {
     static std::map<std::string, picture::Picture> files;
     if (spec.compare(0, 4, "hud:") == 0) {
         if (ui::GameImage(g.hud, spec.substr(4).c_str(), x, y, size, size, tint)) return;
@@ -1681,7 +1683,12 @@ void Icon(const std::string& spec, float x, float y, float size, uint32_t tint) 
         ui::Image(spec.c_str(), x, y, size, size, tint);
         return;
     }
-    // Nothing by that name: a plain tile, so the app can still be opened.
+    // An unavailable custom/HUD icon must not hide the app's own artwork.
+    if (!fallback.empty() && fallback != spec && ui::Tex(fallback.c_str())) {
+        ui::Image(fallback.c_str(), x, y, size, size, tint);
+        return;
+    }
+    // Nothing by either name: a plain tile, so the app can still be opened.
     ui::Fill(x, y, size, size, 0xFF3A3A3E);
     ui::Frame(x, y, size, size, 2.0f, kBlack);
 }
@@ -1697,7 +1704,7 @@ int Badge(const std::string& id) {
 void AppIcon(const config::App& app, float cx, float y, float size, bool label = true) {
     const Rect r{cx - 38.0f, y - 4.0f, 76.0f, size + (label ? 22.0f : 8.0f)};
     const uint32_t tint = ui::Pressing(r) ? 0xFF909090 : kWhite;
-    Icon(app.icon, cx - size / 2, y, size, tint);
+    Icon(app.icon, cx - size / 2, y, size, tint, phone_icons::Builtin(app.id));
     if (const int n = Badge(app.id)) {
         const std::string count = std::to_string(n);
         const float bw = std::max(20.0f, ui::TextWidth(count, F(12.0f)) + 10.0f);
@@ -1790,7 +1797,7 @@ void EndArranging() {
 void IconOnly(const config::App& app, float cx, float y, float size, float scale = 1.0f,
               uint32_t tint = 0xFFFFFFFF) {
     const float s = size * scale;
-    Icon(app.icon, cx - s / 2, y + (size - s) / 2, s, tint);
+    Icon(app.icon, cx - s / 2, y + (size - s) / 2, s, tint, phone_icons::Builtin(app.id));
     ui::Label(cx, y + size + 3.0f, ui::Fit(app.label, 78.0f, F(12.0f)), F(12.0f, kWhite, sprite::Align::Centre));
 }
 
@@ -1873,7 +1880,7 @@ void KeypadMenu() {
             ui::Image(glyph.c_str(), r.x + in, r.y + in, tile - in * 2, tile - in * 2,
                       faded(on ? 0xFFFFFFFF : 0xE80C2838));
         } else {
-            Icon(app.icon, r.x + in, r.y + in, tile - in * 2, faded(0xFFFFFFFF));
+            Icon(app.icon, r.x + in, r.y + in, tile - in * 2, faded(0xFFFFFFFF), phone_icons::Builtin(app.id));
         }
         if (const int n = Badge(app.id)) {
             const std::string count = std::to_string(n);

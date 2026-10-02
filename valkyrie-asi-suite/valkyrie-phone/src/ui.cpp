@@ -106,7 +106,11 @@ bool GameImage(int slot, const char* texture, float x, float y, float w, float h
     static std::unordered_map<std::string, uintptr_t> cache;
     const std::string key = std::to_string(slot) + ":" + texture;
     auto it = cache.find(key);
-    const uintptr_t t = it != cache.end() ? it->second : (cache[key] = sprite::Find(slot, texture));
+    uintptr_t t = it != cache.end() ? it->second : 0;
+    if (!t) {
+        t = sprite::Find(slot, texture);
+        if (t) cache[key] = t;
+    }
     if (!t) return false;
     if (!ClipRect(y, h)) return true;
     sprite::Draw(t, ToPixelX(x), ToPixelY(y), ToPixelX(x + w), ToPixelY(y + h), argb);

@@ -1,0 +1,52 @@
+{
+  "repository": "https://github.com/darkcenturies/valkyrie-radar",
+  "commit": "e0ed8d6f06609c7b8a517ed571211bbe5e9feffe",
+  "files": [
+    {
+      "source": "tools/dff-to-gltf.py",
+      "destination": "dff-to-gltf.py",
+      "sha256_lf": "eb6a2a6f6beaee945e59a50acf44f7ee9d85678e3b0fda8eaf7a7440e7fca90b"
+    },
+    {
+      "source": "tools/gen-world-scene.py",
+      "destination": "gen-world-scene.py",
+      "sha256_lf": "5d4ed0ad85255bbb86d888da9aaf5681d9235881fb5cf0e4aa80f3d79fe4322d"
+    },
+    {
+      "source": "tools/txd-read.py",
+      "destination": "txd-read.py",
+      "sha256_lf": "462fbd6f07bbeea3c832dde960a5f2f312eaf3d1b5786fd40a47542159d3b485"
+    },
+    {
+      "source": "tools/world3d-atlas.py",
+      "destination": "world3d-atlas.py",
+      "sha256_lf": "07cb3926821e49ccbd16159a5df2cde38ca87cf547456c79694b893c1ded6f89"
+    },
+    {
+      "source": "tools/world3d-bake.py",
+      "destination": "world3d-bake.py",
+      "sha256_lf": "ab91133110c47c1a223ff6cd5545c529ea23ca3e0e4019ebf5f327eba1d57050"
+    },
+    {
+      "source": "tools/world3d-index.py",
+      "destination": "world3d-index.py",
+      "sha256_lf": "173acbacc12d0f2d122f1e81ef7cc29a890842edfc45d645a2def9e1c36847c4"
+    },
+    {
+      "source": "tools/world3d-radar-3dpack.py",
+      "destination": "world3d-radar-3dpack.py",
+      "sha256_lf": "daacca6f6ad714faf6d81dedbd69fd8da3d164789a7a810d858af29a695f6991"
+    },
+    {
+      "source": "tools/world3d-radar-texture.py",
+      "destination": "world3d-radar-texture.py",
+      "sha256_lf": "2b141b41a2b427e595b8cd32a3c7656176591bb0be17147b6e8dc3c971976d4b"
+    },
+    {
+      "source": "tools/world3d-textures.py",
+      "destination": "world3d-textures.py",
+      "sha256_lf": "7632f3d722d719787d5d1c14ec1623da2c49d6d6dfd0a3c027b42116a40d916f"
+    }
+  ],
+  "local_adapter": "Build-PhoneMapData.ps1"
+}
