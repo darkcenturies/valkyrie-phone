@@ -10,7 +10,7 @@ An in-game phone for **GTA San Andreas 1.0 US**, with calls, messages, a camera 
 - Camera, photo gallery, flashlight, radio and minigames.
 - 3D Maps with generated stock San Andreas map tiles included.
 - iFruit and keypad handsets, with coarse pixel icons in the game's style.
-- Original left-hand animations for holding, typing, calls, photos and selfies.
+- Existing GTA SA animations for phone actions and calls.
 - Built-in trainer, available through Contacts or **Alt+Z**.
 
 The Internet app includes **eight authored offline San Andreas pages**. External links open your desktop browser. GTA IV websites can be added in a [personal build](BUILDING.md#optional-browser-content).
@@ -21,7 +21,7 @@ Requires GTA San Andreas **1.0 US** and an **x86 ASI loader**.
 
 1. Download and extract `valkyrie-phone-gta-sa-1.0-full.zip`.
 2. Close the game and copy `valkyrie-phone.asi`, `valkyrie-phone.ini` and `valkyrie-radar-tiles` into the folder containing `gta_sa.exe`.
-3. Start the game and press **P** to open the phone. Use the mouse to navigate.
+3. Start the game and press **P** to show the tucked phone. **Right-click** fully raises it and starts the take-out animation. Use the mouse to navigate.
 
 Settings are in `valkyrie-phone.ini`. In `[Phone]`, `Skin=Keypad` selects the keypad handset. `IconSize=16` is the default pixel artwork; `IconSize=64` selects the older detailed icons.
 

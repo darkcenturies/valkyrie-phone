@@ -62,7 +62,8 @@ An x86 ASI loader is required. Settings are in valkyrie-phone.ini.
 
 ## Controls and contents
 
-Press P to open/close the phone; use the mouse to navigate.
+Press P to show/close the tucked phone UI. Right-click fully raises it and plays
+take-out; only then is the handset drawn in CJ's hand. Use the mouse to navigate.
 Calls, texts, contacts, camera, photos, flashlight, maps, services and trainer
 are included. Settings are in valkyrie-phone.ini. Call Trainer in Contacts
 or press Alt+Z for the trainer. Skin=Keypad selects the optional keypad handset.
