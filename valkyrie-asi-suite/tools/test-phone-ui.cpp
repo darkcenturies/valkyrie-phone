@@ -1,6 +1,7 @@
 // A texture that is initially unavailable must be retried on a later draw.
 #include "ui.h"
 #include "app_icon.h"
+#include "config.h"
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -10,9 +11,12 @@ int lookups = 0, draws = 0;
 bool available = false;
 struct Band { float top, bottom; uint32_t colour; };
 std::vector<Band> bands;
+config::Config settings;
+std::string lastTexture;
 }
+namespace config { const Config& Get() { return settings; } }
 namespace sprite {
-uintptr_t Find(int, const char*) { ++lookups; return available ? 42 : 0; }
+uintptr_t Find(int, const char* name) { ++lookups; lastTexture = name; return available ? 42 : 0; }
 void Draw(uintptr_t texture, float, float, float, float, uint32_t) {
     assert(texture == 42);
     ++draws;
@@ -44,6 +48,14 @@ int main() {
     assert(lookups == 2 && draws == 1);
     assert(ui::GameImage(1, "radar_centre", 0, 0, 32, 32));
     assert(lookups == 2 && draws == 2);
+    ui::SetDictionary(3);
+    assert(ui::Tex("app_photos") == 42 && lastTexture == "app_photos");
+    settings.iconSize = 64;
+    assert(ui::Tex("app_photos") == 42 && lastTexture == "app_photos_64");
+    assert(ui::Tex("g_camera") == 42 && lastTexture == "g_camera_64");
+    settings.iconSize = 16;
+    const int cached = lookups;
+    assert(ui::Tex("app_photos") == 42 && lookups == cached);
     ui::Gradient(0, 0, 40, 40, 0xFF000000, 0xFFFFFFFF);
     assert(bands.size() == 4 && bands[0].colour == 0xFF000000 && bands[3].colour == 0xFFFFFFFF);
     bands.clear();
