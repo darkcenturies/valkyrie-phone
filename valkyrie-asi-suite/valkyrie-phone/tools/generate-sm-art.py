@@ -19,6 +19,7 @@ rest of the folder alone:
 
     python generate-sm-art.py
 """
+import argparse
 import math
 import os
 import random
@@ -26,6 +27,10 @@ import shutil
 
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--ui-only', action='store_true', help='Regenerate only keypad icons and tiles.')
+args = parser.parse_args()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PHONE = os.path.join(HERE, "..")
@@ -331,25 +336,12 @@ def background():
 
 
 def tile(name, top, bottom, rim, highlight):
-    S = 512
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    grad = Image.new("RGBA", (1, S))
-    for y in range(S):
-        t = y / (S - 1)
-        grad.putpixel((0, y), tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)) + (255,))
-    grad = grad.resize((S, S))
-    rng = np.random.default_rng(len(name))
-    noise = rng.normal(0, 6, (S // 4, S // 4))
-    noise = Image.fromarray((noise + 128).clip(0, 255).astype(np.uint8)).resize((S, S), Image.BICUBIC)
-    grad = Image.merge("RGBA", [ImageChops.add(c, noise, 1, -128) for c in grad.convert("RGB").split()] +
-                       [Image.new("L", (S, S), 255)])
-    mask = Image.new("L", (S, S))
-    ImageDraw.Draw(mask).rounded_rectangle((8, 8, S - 9, S - 9), radius=34, fill=255)
-    img.paste(grad, (0, 0), mask)
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((8, 8, S - 9, S - 9), radius=34, outline=rim + (255,), width=14)
-    d.line((40, 26, S - 40, 26), fill=highlight + (200,), width=8)
-    img.resize((128, 128), Image.LANCZOS).save(os.path.join(OUT, name + ".png"))
+    d.rectangle((0, 0, 15, 15), fill=(0, 0, 0, 255))
+    d.rectangle((2, 2, 13, 7), fill=top + (255,))
+    d.rectangle((2, 8, 13, 13), fill=bottom + (255,))
+    img.save(os.path.join(OUT, name + ".png"))
 
 
 def glyph(name, draw):
@@ -360,7 +352,11 @@ def glyph(name, draw):
     draw(m, d)
     img = Image.new("RGBA", (S, S), (255, 255, 255, 255))
     img.putalpha(m)
-    img.resize((128, 128), Image.LANCZOS).save(os.path.join(OUT, "sm_" + name + ".png"))
+    mask = m.resize((16, 16), Image.Resampling.BOX).point(lambda value: 255 if value > 110 else 0)
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    img.paste((0, 0, 0, 255), (0, 0), mask.filter(ImageFilter.MaxFilter(3)))
+    img.paste((255, 255, 255, 255), (0, 0), mask)
+    img.save(os.path.join(OUT, "sm_" + name + ".png"))
 
 
 def thick(d, pts, w, fill=255):
@@ -624,6 +620,13 @@ def model_textures(colour):
 
 
 if __name__ == "__main__":
+    if args.ui_only:
+        tile("sm_tile", (74, 178, 208), (36, 124, 162), (22, 84, 114), (150, 226, 244))
+        tile("sm_tile_on", (196, 246, 255), (104, 214, 240), (226, 252, 255), (255, 255, 255))
+        for name, fn in GLYPHS.items():
+            glyph(name, fn)
+        print('Wrote 16-pixel keypad icons and tiles.')
+        raise SystemExit(0)
     header()
     colour = body()
     background()

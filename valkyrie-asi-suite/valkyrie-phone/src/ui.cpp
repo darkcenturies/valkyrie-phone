@@ -118,6 +118,7 @@ bool GameImage(int slot, const char* texture, float x, float y, float w, float h
 }
 
 void Frame(float x, float y, float w, float h, float t, uint32_t argb) {
+    t = std::min(std::max(t, 3.0f), std::min(w, h) * 0.5f);
     Fill(x, y, w, t, argb);
     Fill(x, y + h - t, w, t, argb);
     Fill(x, y + t, t, h - 2 * t, argb);
@@ -129,9 +130,7 @@ void Fill(float x, float y, float w, float h, uint32_t argb) {
 }
 
 void Gradient(float x, float y, float w, float h, uint32_t topArgb, uint32_t bottomArgb) {
-    const float y0 = y, h0 = h;
-    if (!ClipRect(y, h)) return;
-    // Keep the gradient's colours where they were before the clip cut it.
+    if (w <= 0.0f || h <= 0.0f) return;
     auto mix = [](uint32_t a, uint32_t b, float t) {
         uint32_t out = 0;
         for (int shift = 0; shift < 32; shift += 8) {
@@ -141,9 +140,16 @@ void Gradient(float x, float y, float w, float h, uint32_t topArgb, uint32_t bot
         }
         return out;
     };
-    const uint32_t t = h0 > 0 ? mix(topArgb, bottomArgb, (y - y0) / h0) : topArgb;
-    const uint32_t b = h0 > 0 ? mix(topArgb, bottomArgb, (y + h - y0) / h0) : bottomArgb;
-    sprite::Gradient(ToPixelX(x), ToPixelY(y), ToPixelX(x + w), ToPixelY(y + h), t, b);
+    // Four flat colour bands reuse the coarse icon shading throughout the UI.
+    // Clip each original band separately so scrolling never shifts its colours.
+    const int bands = topArgb == bottomArgb ? 1 : 4;
+    for (int i = 0; i < bands; ++i) {
+        float bandY = y + h * i / bands;
+        float bandH = h / bands;
+        if (!ClipRect(bandY, bandH)) continue;
+        const uint32_t colour = bands == 1 ? topArgb : mix(topArgb, bottomArgb, i / 3.0f);
+        sprite::Gradient(ToPixelX(x), ToPixelY(bandY), ToPixelX(x + w), ToPixelY(bandY + bandH), colour, colour);
+    }
 }
 
 void Needle(float cx, float cy, float angle, float length, float tail, float width, uint32_t argb) {
