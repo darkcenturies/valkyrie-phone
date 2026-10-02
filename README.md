@@ -9,6 +9,8 @@ Initialize the pinned SDK/ImGui submodules, then build:
 
 ```powershell
 git submodule update --init --recursive
+python -m pip install Pillow playwright
+python -m playwright install chromium
 ./valkyrie-asi-suite/build.ps1 -Release
 ```
 
@@ -41,16 +43,36 @@ prepare data without copying it into the game.
 
 ## Optional content and validation
 
-The core build includes the phone's artwork, held model, textures, tones and
-embedded trainer. Map tiles are supplied/generated separately. No browser-page
-pack is checked in at `valkyrie-asi-suite/valkyrie-phone/assets/web/valkyrie-web.dat`;
-without a generated/supplied pack the browser has no pages. GTA IV page generation
-requires the player's own permitted input and its documented extra dependencies.
+The public Actions artifact ships:
 
-On 2026-10-01 the optimized x86 build and script-edition packaging/7-Zip integrity
-test passed after initializing the pinned submodules. No installation or gameplay
-test was performed. These checks establish build/package completeness, not
-in-game startup, camera, maps or device-reset behavior.
+| Included | Contents |
+| --- | --- |
+| `valkyrie-phone.asi` | Windows x86 phone, embedded trainer, authored handset model, artwork and tones |
+| Offline Internet app | Eight authored pages: Cluckin' Bell (home/menu), Epsilon (home/join), eXsorbeo, Maccer, West Coast Rap Legends and sp-rp.com; embedded in the ASI |
+| Configuration and tools | Default INI and map builder |
+| Source and credits | Source ZIP, licence, notices and `BUILD.txt` identifying the commit and ASI hash |
+
+**Not included:** GTA IV websites, archived Rockstar promotional websites,
+GTA game files, generated map tiles, the optional weapon loader, or private
+build symbols. Maps needs data generated from your own GTA SA install. The
+Internet app navigates bundled offline pages; external links open your desktop
+browser. It does not browse arbitrary live websites.
+
+For GTA IV pages, build locally with your own GTA IV `pc/html` and
+`pc/text/american.gxt` files:
+
+```powershell
+./valkyrie-asi-suite/build.ps1 -Release -Gta4Path "C:\Games\Grand Theft Auto IV\GTAIV"
+```
+
+This rebuilds the browser pack even if one already exists. Check conversion
+messages to confirm GTA IV pages were included. An explicitly requested GTA IV
+build fails if its input is missing or conversion fails. Local builds can also reuse an existing page
+pack or discover a local GTA IV install. **Actions uses a clean checkout and
+ships only the eight authored SA pages.** See [browser details and limitations](valkyrie-asi-suite/valkyrie-phone/README.md#the-internet).
+
+Build/tests establish package completeness; in-game startup, camera, maps,
+device resets and appearance still require verification in the supported game.
 
 [GTA Workshop](https://github.com/darkcenturies/gta-workshop) contains guides,
 references and public research; this repository retains the public Phone source.
