@@ -383,7 +383,10 @@ def render(pages, mobile, archive=()):
     from playwright.sync_api import sync_playwright
     out = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(channel='chrome')
+        try:
+            browser = p.chromium.launch(channel='chrome')
+        except Exception:
+            browser = p.chromium.launch()
         width, ratio = (MOBILE_WIDTH, MOBILE_PIXEL_RATIO) if mobile else (640, 1.0)
         tab = browser.new_page(viewport={'width': width, 'height': 480}, device_scale_factor=ratio)
         for i, (key, title, html_path) in enumerate(pages):

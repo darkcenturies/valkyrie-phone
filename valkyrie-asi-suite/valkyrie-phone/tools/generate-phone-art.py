@@ -602,8 +602,19 @@ def saucer_extra(img, mask):
         d.ellipse((x - IS * 0.04, IS * 0.54, x + IS * 0.04, IS * 0.62), fill=(250, 220, 60, 255))
 
 
+def duality_icon():
+    """Flat 16-pixel light/dark arena and red ship, matching the stock HUD edge."""
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse((0, 0, 15, 15), fill=BLACK)
+    d.ellipse((2, 2, 13, 13), fill=(240, 240, 236, 255))
+    d.rectangle((2, 4, 7, 11), fill=(34, 34, 40, 255))
+    d.polygon([(8, 3), (11, 11), (8, 9), (5, 11)], fill=(215, 40, 40, 255), outline=BLACK)
+    img.save(os.path.join(OUT, "game_duality.png"))
+
+
 def game_icons():
-    radar_icon(disc_shape(), (140, 140, 146, 255), "game_duality", duality_extra)
+    duality_icon()
     radar_icon(bee_shape(), (245, 200, 40, 255), "game_bumble", bee_extra)
     radar_icon(planet_shape(), (110, 200, 210, 255), "game_uranus", planet_extra)
     radar_icon(saucer_shape(), (170, 172, 180, 255), "game_spacemonkey", saucer_extra)
