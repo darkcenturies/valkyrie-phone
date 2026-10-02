@@ -1,9 +1,9 @@
 # The phone's HUD weapon icon
 
-`phone.png` is our own 16x16 pixel artwork, with a heavy black outline and
-flat silver shading to match San Andreas's HUD. Regenerate it with
-`tools/generate-weapon-icon.py`. The packer uses nearest-neighbour filtering
-for `valkyriephoneicon`, keeping the enlarged pixels sharp.
+`phone-source.png` is our own original inventory phone artwork, made by
+valkyrie-inventory's make-phone-icon.py. `tools/generate-weapon-icon.py`
+prepares a 64x64 PNG and DXT3-compressed DDS, matching the dimensions and
+compression of the stock San Andreas fist in `hud.txd`.
 
-`make-phone-weapon.ps1` packs it into `valkyriephone.txd` for the optional
-phone weapon. Handset model textures are unchanged.
+`make-phone-weapon.ps1` packs the DDS into `valkyriephone.txd` for the optional
+phone weapon. The HUD uses point filtering. Handset model textures are unchanged.

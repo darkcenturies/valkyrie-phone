@@ -90,7 +90,7 @@ jobs:
 
           Optional weapon mode requires Modloader 0.3.10 and fastman92 7.6 installed separately. Its configurations are already prepared; copy the supplied game-folder files. Internet includes eight authored offline SA pages. GTA IV page packs remain personal local build inputs.
 
-          Reuses GTA SA animation blocks for phone actions and calls, without creating mission-phone tasks. The handset appears when right-click raises the tucked phone UI. IconSize=16 is the default pixel artwork; IconSize=64 selects the older detailed set. The original Settings wrench stays unchanged.
+          Reuses GTA SA animation blocks for phone actions and calls, without creating mission-phone tasks. The handset appears when right-click raises the tucked phone UI. IconSize=16 is the default pixel artwork; IconSize=64 selects the older detailed set. The original Settings wrench stays unchanged. The weapon HUD handset uses the stock fist's 64x64 DXT3 texture settings.
 
           The phone captures its reflection before the HUD, keeping the radar and other HUD overlays out of the glass.
           "@ | Set-Content build/release-notes.md

@@ -28,12 +28,13 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Output "data") | Out-Null
 Copy-Item -LiteralPath (Join-Path $phone "assets\model\valkyrie-phone-model.dff") -Destination (Join-Path $Output "$name.dff") -Force
 
 # The model's textures, and the HUD icon as <model>icon - where the game's
-# HUD looks for a weapon's icon (the 16-pixel phone icon).
+# HUD looks for a weapon's icon (the stock-resolution phone icon).
 $stage = Join-Path ([IO.Path]::GetTempPath()) "valkyrie-phone-weapon-txd"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Path $stage | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $phone "assets\model\textures") -Filter *.png | Copy-Item -Destination $stage
 Copy-Item -LiteralPath (Join-Path $phone "assets\weapon-icon\phone.png") -Destination (Join-Path $stage "${name}icon.png")
+Copy-Item -LiteralPath (Join-Path $phone "assets\weapon-icon\phone.dds") -Destination (Join-Path $stage "${name}icon.dds")
 & (Join-Path $root "tools\pack-phone-txd.ps1") -Source $stage -Output (Join-Path $Output "$name.txd") | Out-Null
 Remove-Item -Recurse -Force $stage
 
