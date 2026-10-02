@@ -68,7 +68,7 @@ if ($Install -and [string]::IsNullOrWhiteSpace($game)) {
 }
 # The phone's version.
 $version = "0.2.1"
-$phoneVersion = "0.2.18-test"
+$phoneVersion = "0.2.19-test"
 
 # Visual Studio 2019 Build Tools. Found rather than hardcoded, because the
 # toolset version in the path changes with every update.
