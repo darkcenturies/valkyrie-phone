@@ -32,5 +32,9 @@ int main() {
     assert(!LegacyDefault("my_phone_idle", "custom", true, "betslp_loop", "otb", true));
     assert(!LegacyDefault("betslp_loop", "otb", false, "betslp_loop", "otb", true));
     assert(!LegacyDefault("ARRESTgun", "custom", false, "ARRESTgun", "ped", false));
+    assert(ResumeHeldCamera(Pose::Photo, Pose::Camera));
+    assert(ResumeHeldCamera(Pose::Photo, Pose::Selfie));
+    assert(!ResumeHeldCamera(Pose::Use, Pose::Camera));
+    assert(!ResumeHeldCamera(Pose::Photo, Pose::Use));
     std::puts("PASS: entry, typing, camera/shutter, exit, rapid reopening and protected interruptions");
 }

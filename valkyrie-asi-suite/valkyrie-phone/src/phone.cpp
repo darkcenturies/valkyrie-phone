@@ -5287,6 +5287,7 @@ constexpr uint16_t kPlayAnim = 0x0605;
 constexpr uint16_t kPlayingAnim = 0x0611;
 constexpr uint16_t kPauseAnim = 0x0612;
 constexpr uint16_t kAnimTime = 0x0613;
+constexpr uint16_t kSetAnimTime = 0x0614;
 constexpr uint16_t kRequestAnimation = 0x04ED;
 constexpr uint16_t kAnimationLoaded = 0x04EE;
 constexpr uint16_t kRemoveAnimation = 0x04EF;
@@ -5297,7 +5298,7 @@ void Lower();
 struct PoseState {
     Pose now = Pose::None;
     config::Anim anim;
-    bool playing = false, seen = false, held = false;
+    bool playing = false, seen = false, held = false, resumeRaised = false;
     ULONGLONG started = 0, checked = 0, typingAt = 0, photoAt = 0, earReleaseUntil = 0;
     int tries = 0;
     uintptr_t association = 0;
@@ -5396,6 +5397,13 @@ void UpdatePose() {
             if (association && association->delta >= 0.0f) g_pose.association = reinterpret_cast<uintptr_t>(association);
         }
         g_pose.seen = g_pose.association != 0;
+        if (g_pose.seen && g_pose.resumeRaised) {
+            // The shutter ends with the handset still raised; do not replay its entry.
+            script::Command(kSetAnimTime, {handle, g_pose.anim.name.c_str(), 0.96f});
+            script::Command(kPauseAnim, {handle, g_pose.anim.name.c_str(), true});
+            g_pose.held = true;
+            g_pose.resumeRaised = false;
+        }
         script::Locals time;
         script::Command(kAnimTime, {handle, g_pose.anim.name.c_str(), script::Arg::Local(0)}, &time);
         complete = g_pose.seen && time.Float(0) >= 0.96f;
@@ -5439,6 +5447,13 @@ void UpdatePose() {
         g_pose.now = want; // Disabled/failed one-shots advance next frame; no retry loop.
         return;
     }
+    if (g_pose.playing && !phone_actions::OneShot(g_pose.now) && !phone_actions::OneShot(want) &&
+        phone_actions::CameraPose(g_pose.now) && phone_actions::CameraPose(want) &&
+        phone_actions::SameName(a.name, g_pose.anim.name) && phone_actions::SameName(a.file, g_pose.anim.file) &&
+        a.loop == g_pose.anim.loop) {
+        g_pose.now = want; // Front/rear flip with the same stance keeps the existing raised arms.
+        return;
+    }
     if (!IsPed(a.file)) {
         script::Command(kRequestAnimation, {a.file.c_str()});
         if (!script::Command(kAnimationLoaded, {a.file.c_str()})) {
@@ -5454,6 +5469,7 @@ void UpdatePose() {
             return;
         }
     }
+    const bool resumeRaised = phone_actions::ResumeHeldCamera(g_pose.now, want) && !a.loop;
     if (g_pose.playing) FadePose(g_pose.anim);
     const std::string previousFile = g_pose.loadedFile;
     script::Command(kPlayAnim, {handle, a.name.c_str(), a.file.c_str(), 6.0f, a.loop && !phone_actions::OneShot(want),
@@ -5462,6 +5478,7 @@ void UpdatePose() {
     g_pose.loadingFile.clear();
     g_pose.association = 0;
     g_pose.anim = a;
+    g_pose.resumeRaised = resumeRaised;
     g_pose.playing = true;
     g_pose.seen = g_pose.held = false;
     g_pose.tries = 1;

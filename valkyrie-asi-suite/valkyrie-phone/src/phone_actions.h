@@ -20,6 +20,9 @@ constexpr bool CameraPose(Pose p) { return p == Pose::Camera || p == Pose::Selfi
 constexpr bool OneShot(Pose p) {
     return p == Pose::TakeOut || p == Pose::Photo || p == Pose::CameraOut || p == Pose::PutAway;
 }
+constexpr bool ResumeHeldCamera(Pose from, Pose to) {
+    return from == Pose::Photo && (to == Pose::Camera || to == Pose::Selfie);
+}
 constexpr bool Leaving(Pose p) { return p == Pose::CameraOut || p == Pose::PutAway; }
 constexpr Pose Next(Pose current, Pose desired, bool complete, bool allowed, bool shutter) {
     if (!allowed) return Pose::None; // Calls, vehicles, falls and mission tasks always win.
