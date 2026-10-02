@@ -100,6 +100,7 @@ constexpr int kStateZTest = 6, kStateZWrite = 8, kStateCull = 20;
 constexpr uintptr_t kGetAnimHierarchyFromSkinClump = 0x734A40;
 constexpr uintptr_t kRpHAnimIDGetIndex = 0x7C51A0;
 constexpr int kBoneLeftHand = 34;
+constexpr int kBoneRightHand = 24;
 constexpr uintptr_t kRwMatrixRotate = 0x7F1FD0;     // (matrix, axis*, degrees, combine)
 constexpr uintptr_t kRwMatrixTranslate = 0x7F2450;  // (matrix, v*, combine)
 constexpr int kCombinePreconcat = 1;
@@ -123,7 +124,7 @@ constexpr uintptr_t kRenderWeaponPedsForPC = 0x732F30;
 constexpr uintptr_t kFindPlayerPed = 0x56E210;
 bool g_passHooked = false;
 struct HandDraw {
-    bool on = false;
+    bool on = false, right = false, hideNative = false;
     float turn[3] = {0, 0, 0};
     float offset[3] = {0, 0, 0};
     bool flip = true;
@@ -263,12 +264,12 @@ uintptr_t __cdecl MeasureAtomic(uintptr_t atomic, void* data) {
 // The left hand's bone as the ped was last animated, and the phone's place
 // in it. `flip` turns the phone half round about its own long axis, first,
 // so its screen faces the other way and it stays the same way up.
-bool HandMatrix(uintptr_t ped, const float turn[3], const float offset[3], bool flip, Matrix& out) {
+bool HandMatrix(uintptr_t ped, const float turn[3], const float offset[3], bool flip, Matrix& out, bool right = false) {
     const uintptr_t clump = ped ? *reinterpret_cast<const uintptr_t*>(ped + kEntityClump) : 0;
     if (!clump) return false;
     const uintptr_t hierarchy = reinterpret_cast<uintptr_t(__cdecl*)(uintptr_t)>(kGetAnimHierarchyFromSkinClump)(clump);
     if (!hierarchy) return false;
-    const int index = reinterpret_cast<int(__cdecl*)(uintptr_t, int)>(kRpHAnimIDGetIndex)(hierarchy, kBoneLeftHand);
+    const int index = reinterpret_cast<int(__cdecl*)(uintptr_t, int)>(kRpHAnimIDGetIndex)(hierarchy, right ? kBoneRightHand : kBoneLeftHand);
     const int nodes = *reinterpret_cast<const int*>(hierarchy + 4);
     const uintptr_t matrices = *reinterpret_cast<const uintptr_t*>(hierarchy + 8);  // pMatrixArray
     if (index < 0 || index >= nodes || !matrices) return false;
@@ -291,12 +292,12 @@ bool HandMatrix(uintptr_t ped, const float turn[3], const float offset[3], bool 
     return true;
 }
 
-bool DrawHand(uintptr_t ped, const float turn[3], const float offset[3], bool flip) {
+bool DrawHand(uintptr_t ped, const float turn[3], const float offset[3], bool flip, bool right) {
     const uintptr_t engine = *reinterpret_cast<const uintptr_t*>(kRwEngineInstance);
     // Only inside a camera's frame.
     if (!engine || !*reinterpret_cast<const uintptr_t*>(engine) || !ped) return false;
     const uintptr_t info = CellphoneInfo();
-    const uintptr_t source = info ? RwObject(info) : 0;
+    const uintptr_t source = g_ours ? g_ours : (info ? RwObject(info) : 0);
     if (!source) return false;
     if (g_hand && g_handFrom != source) ReleaseHand();
     if (!g_hand) {
@@ -318,7 +319,7 @@ bool DrawHand(uintptr_t ped, const float turn[3], const float offset[3], bool fl
         }
     }
     Matrix m{};
-    if (!HandMatrix(ped, turn, offset, flip, m)) return false;
+    if (!HandMatrix(ped, turn, offset, flip, m, right)) return false;
     const uintptr_t frame = *reinterpret_cast<const uintptr_t*>(g_hand + kObjectParent);
     if (!frame) return false;
     memcpy(reinterpret_cast<void*>(frame + 0x10), &m, sizeof m);  // RwFrame's modelling matrix
@@ -354,12 +355,10 @@ uintptr_t __cdecl HideAtomic(uintptr_t atomic, void*) {
 
 void __cdecl WeaponPass() {
     const uintptr_t ped = reinterpret_cast<uintptr_t(__cdecl*)(int)>(kFindPlayerPed)(-1);
-    // While the phone is in his hand, the only weapon object he can have is
-    // the phone as a weapon, which the game would draw in his right hand
-    // (every weapon goes there). Its atomics are switched off wherever the
-    // game draws them, and the phone is drawn in his left hand below.
+    // Hide only the selected optional phone weapon, including while tucked.
+    // The raised handset is drawn separately on the wrist used by its clip.
     // (CPed::m_pWeaponObject: an RpAtomic, type 1, or an RpClump, type 2.)
-    if (g_draw.on && ped) {
+    if (ped && g_draw.hideNative && *reinterpret_cast<const uint8_t*>(ped + 0x718) == 12) {
         if (const uintptr_t object = *reinterpret_cast<const uintptr_t*>(ped + 0x4F4)) {
             const uint8_t type = *reinterpret_cast<const uint8_t*>(object);
             if (type == 1) HideAtomic(object, nullptr);
@@ -371,7 +370,7 @@ void __cdecl WeaponPass() {
     reinterpret_cast<void(__cdecl*)()>(kRenderWeaponPedsForPC)();
     // Not in the mirror render (CMirrors::bRenderingReflection): that is the
     // Camera app's lens, which is in the phone and does not see it.
-    if (g_draw.on && !*reinterpret_cast<const bool*>(0xC7C728)) DrawHand(ped, g_draw.turn, g_draw.offset, g_draw.flip);
+    if (g_draw.on && !*reinterpret_cast<const bool*>(0xC7C728)) DrawHand(ped, g_draw.turn, g_draw.offset, g_draw.flip, g_draw.right);
 }
 
 }  // namespace
@@ -400,7 +399,10 @@ bool HookWeaponPass() {
     return g_passHooked;
 }
 
-void SetHand(bool on, const float turn[3], const float offset[3], bool flip) {
+void HideNativeWeapon(bool hide) { g_draw.hideNative = hide; }
+
+void SetHand(bool on, const float turn[3], const float offset[3], bool flip, bool right) {
+    g_draw.right = right;
     g_draw.on = on;
     for (int i = 0; i < 3; ++i) {
         g_draw.turn[i] = turn[i];
@@ -412,12 +414,12 @@ void SetHand(bool on, const float turn[3], const float offset[3], bool flip) {
 bool RenderInLeftHand(uintptr_t ped, const float turn[3], const float offset[3], bool flip) {
     // Drawn in the weapon pass already.
     if (g_passHooked) return true;
-    return DrawHand(ped, turn, offset, flip);
+    return DrawHand(ped, turn, offset, flip, g_draw.right);
 }
 
 bool LeftHandPlace(uintptr_t ped, const float turn[3], const float offset[3], bool flip, float pos[3], float facing[3]) {
     Matrix m{};
-    if (!HandMatrix(ped, turn, offset, flip, m)) return false;
+    if (!HandMatrix(ped, turn, offset, flip, m, g_draw.right)) return false;
     for (int i = 0; i < 3; ++i) {
         pos[i] = m.pos[i];
         facing[i] = m.at[i];
@@ -427,7 +429,7 @@ bool LeftHandPlace(uintptr_t ped, const float turn[3], const float offset[3], bo
 
 bool LeftHandLamp(uintptr_t ped, const float turn[3], const float offset[3], bool flip, float pos[3], float direction[3]) {
     Matrix m{};
-    if (!HandMatrix(ped, turn, offset, flip, m)) return false;
+    if (!HandMatrix(ped, turn, offset, flip, m, g_draw.right)) return false;
     // build-phone-model.py: MIDDLE + camera centre in metres; back faces -Y.
     constexpr float lens[3] = {0.054f, 0.01545f, 0.064f};
     for (int i = 0; i < 3; ++i) {
