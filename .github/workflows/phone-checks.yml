@@ -5,6 +5,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,8 +51,13 @@ jobs:
           git archive --format=zip --output=build/ci-package/valkyrie-phone-source.zip HEAD
           if ($LASTEXITCODE -ne 0) { throw "Source archive failed." }
           "Source: https://github.com/darkcenturies/valkyrie-phone/commit/$env:GITHUB_SHA" | Set-Content build/ci-package/BUILD.txt
-          "Browser: eight authored offline SA pages; no GTA IV or archived pages. Map tiles and weapon loader are separate." | Add-Content build/ci-package/BUILD.txt
+          "Browser: eight authored offline SA pages; no GTA IV or archived pages. Generated stock map tiles and optional weapon configs are included." | Add-Content build/ci-package/BUILD.txt
           (Get-FileHash build/ci-package/valkyrie-phone.asi -Algorithm SHA256).Hash | Add-Content build/ci-package/BUILD.txt
+      - name: Include verified stock map and optional weapon configs
+        shell: powershell
+        run: |
+          ./valkyrie-asi-suite/tools/stage-phone-content.ps1 -Output build/ci-package
+          "Maps: 142 generated stock SA tile pairs (284 files), individually SHA-256 verified. Optional weapon: ready-to-copy model and configured INI/data files; Modloader and fastman92 required separately." | Add-Content build/ci-package/BUILD.txt
       - name: Publish merged build
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
@@ -59,3 +66,29 @@ jobs:
           path: build/ci-package/
           if-no-files-found: error
           retention-days: 30
+      - name: Publish complete merged build to Releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          $archive = "valkyrie-phone-gta-sa-1.0-$short-full.zip"
+          & 'C:\Program Files\7-Zip\7z.exe' a -tzip -mx=5 "build/$archive" './build/ci-package/*' -bsp0 -bso0
+          if ($LASTEXITCODE -ne 0) { throw 'Full install archive failed.' }
+          & 'C:\Program Files\7-Zip\7z.exe' t "build/$archive" -bsp0 -bso0
+          if ($LASTEXITCODE -ne 0) { throw 'Full install archive verification failed.' }
+          $hash = (Get-FileHash "build/$archive" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archive" | Set-Content "build/$archive.sha256"
+          @"
+          Complete GTA San Andreas 1.0 US Phone build from main commit $env:GITHUB_SHA.
+
+          Download **$archive** for the full installation: phone ASI, default INI, 142 generated stock map tile pairs, ready-to-copy optional weapon model/configs, map builder, source archive, install instructions and credits.
+
+          Optional weapon mode requires Modloader 0.3.10 and fastman92 7.6 installed separately. Its configurations are already prepared; copy the supplied game-folder files. Internet includes eight authored offline SA pages. GTA IV page packs remain personal local build inputs.
+
+          SHA-256: $hash
+          "@ | Set-Content build/release-notes.md
+          gh release create "build-$env:GITHUB_SHA" "build/$archive" "build/$archive.sha256" --target $env:GITHUB_SHA --title "Valkyrie Phone - GTA SA 1.0 ($short)" --notes-file build/release-notes.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Merged build release publication failed.' }
