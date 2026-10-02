@@ -1,7 +1,6 @@
 param(
     [Parameter(Mandatory=$true)][string]$Version,
-    # Each edition's map, as a Valkyrie-radar-tiles folder. An edition whose
-    # folder is not given is not made.
+    # Optional custom map folder; otherwise use the pinned stock SA map.
     [string]$GtaSaTiles,
     # Only these editions (script, gtasa).
     [string[]]$Only
@@ -68,9 +67,10 @@ function Write-Readme($path, $e) {
         "OPTIONAL - THE PHONE AS A WEAPON",
         "",
         "The 'Optional - phone as a weapon' folder gives the phone a weapon slot of",
-        "its own. It needs modloader and fastman92's limit adjuster with its weapon",
-        "type loader (requires a compatible loader). Read the README in that folder: it",
-        "takes two steps, and both are needed.",
+        "its own. It requires Modloader 0.3.10 and fastman92 limit adjuster 7.6.",
+        "With those installed, copy the contents of 'Copy into game folder' into",
+        "the game folder, replacing the supplied configs. No editing on stock SA.",
+        "Back up existing configs; custom weapon/limit settings need to be retained.",
         "",
         "IF SOMETHING GOES WRONG",
         "",
@@ -84,11 +84,13 @@ function Write-Readme($path, $e) {
 $made = @()
 foreach ($e in $editions) {
     if ($Only -and $e.Id -notin $Only) { continue }
-    if ($e.Id -ne "script" -and -not $e.Tiles) { Write-Host "[package] $($e.Id): no tiles given - skipped" -ForegroundColor Yellow; continue }
     if ($e.Tiles -and -not (Test-Path (Join-Path $e.Tiles "*.r3g"))) { throw "no tiles in $($e.Tiles)" }
     $name = "valkyrie-phone-$Version-$($e.Id)"
     $dir = Join-Path $build "packages\$name"
-    if (Test-Path $dir) { cmd /c rd /s /q "$dir" }
+    $packageRoot = [IO.Path]::GetFullPath((Join-Path $build 'packages')) + [IO.Path]::DirectorySeparatorChar
+    $dir = [IO.Path]::GetFullPath($dir)
+    if (-not $dir.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Package path escapes build/packages.' }
+    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Copy-Item -LiteralPath $asi -Destination $dir
 
@@ -99,26 +101,12 @@ foreach ($e in $editions) {
         Copy-Item -LiteralPath (Join-Path $root "tools\build-phone-map.ps1") -Destination $dir
     }
 
-    # The weapon folder, set apart.
-    $optional = Join-Path $dir "Optional - phone as a weapon"
-    & (Join-Path $root "tools\make-phone-weapon.ps1") -Output (Join-Path $optional "Valkyrie Phone") | Out-Null
-    Set-Content -LiteralPath (Join-Path $optional "README.txt") -Encoding ASCII -Value @(
-        "THE PHONE AS A WEAPON - OPTIONAL",
-        "",
-        "This gives the phone a weapon slot of its own (scroll to it like any",
-        "weapon). It needs modloader and fastman92's limit adjuster with its weapon",
-        "type loader switched on. It takes two steps,",
-        "and both are needed:",
-        "",
-        "1. Put the 'Valkyrie Phone' folder in the game's modloader folder.",
-        "2. Do what 'Valkyrie Phone\Valkyrie Phone.txt' says: switch the weapon",
-        "   type loader on and add the phone's line to data\gtasa_weapon_config.dat.",
-        "",
-        "Never do step 1 without step 2: the game would take the phone for CJ's",
-        "fists. To take it out again, undo both.")
-
+    # Both editions carry the stock map and ready-to-copy optional weapon configs.
+    # The script edition additionally retains the builder for custom maps.
+    & (Join-Path $root 'tools/stage-phone-content.ps1') -Output $dir
     if ($e.Tiles) {
         # Linked, not copied: the same gigabytes on disk until they are packed.
+        Remove-Item -LiteralPath (Join-Path $dir 'Valkyrie-radar-tiles') -Recurse -Force
         New-Item -ItemType Directory -Path (Join-Path $dir "Valkyrie-radar-tiles") | Out-Null
         Get-ChildItem -LiteralPath $e.Tiles -File | ForEach-Object {
             New-Item -ItemType HardLink -Path (Join-Path $dir "Valkyrie-radar-tiles\$($_.Name)") -Target $_.FullName | Out-Null

@@ -15,10 +15,11 @@ python -m playwright install chromium
 ```
 
 MSVC C++ Build Tools and a Windows SDK are required. The bundled authored sites also need `python -m pip install Pillow playwright` and `python -m playwright install chromium`. The build fails if it cannot include the pages. An x86 ASI loader is
-required. Install with the game closed. Maps needs tiles built from the player's
-own game using the included builder. Optional phone-as-a-weapon installation needs
-modloader and a compatible fastman92 weapon type loader; follow both steps in
-the generated package's README. The embedded trainer replaces a separate copy.
+required. Install with the game closed. Actions packages include generated stock
+SA map tiles. Custom maps can regenerate tiles using the included builder.
+The optional phone-as-a-weapon folder includes the authored model and ready-to-copy
+replacement configurations. Modloader 0.3.10 and fastman92 7.6 are required for
+weapon mode; install those separately, then copy the supplied game-folder files. The embedded trainer replaces a separate copy.
 
 See [the detailed controls and configuration](valkyrie-asi-suite/valkyrie-phone/README.md)
 and [source maintenance](MAINTENANCE.md). Native compilation and isolated tests
@@ -50,11 +51,22 @@ The public Actions artifact ships:
 | `valkyrie-phone.asi` | Windows x86 phone, embedded trainer, authored handset model, artwork and tones |
 | Offline Internet app | Eight authored pages: Cluckin' Bell (home/menu), Epsilon (home/join), eXsorbeo, Maccer, West Coast Rap Legends and sp-rp.com; embedded in the ASI |
 | Configuration and tools | Default INI and map builder |
+| Maps | `Valkyrie-radar-tiles`: 142 generated stock GTA SA tile pairs, 284 `.r3g`/`.r3a` files; ready to copy into the game folder |
+| Optional phone as a weapon | Ready-to-copy model/texture/modloader definitions, configured `fastman92limitAdjuster_GTASA.ini` and stock-plus-phone `data/gtasa_weapon_config.dat`; requires Modloader 0.3.10 and fastman92 7.6 |
+| Installation and inventory | `INSTALL.txt`, optional weapon README, and `phone-content.json` pinning content URLs and SHA-256 hashes |
 | Source and credits | Source ZIP, licence, notices and `BUILD.txt` identifying the commit and ASI hash |
 
 **Not included:** GTA IV websites, archived Rockstar promotional websites,
-GTA game files, generated map tiles, the optional weapon loader, or private
-build symbols. Maps needs data generated from your own GTA SA install. The
+game executables, original game archives, dependency binaries, or private build symbols. Generated
+map tiles use stock SA geometry/textures and are release assets, kept outside Git.
+The normal installation copies the ASI, INI and tiles; weapon mode stays optional.
+For weapon mode, install [Modloader](https://github.com/thelink2012/modloader/releases/tag/v0.3.10)
+and [fastman92](https://www.fastman92.com/fastman92-limit-adjuster/), then copy
+`Optional - phone as a weapon/Copy into game folder` into the game folder,
+replacing the supplied configuration files. They already enable the weapon loader,
+retain its required author field and register the phone: no edits on a stock setup.
+Back up existing configs first; these replacement files are for stock SA plus the
+phone, so other custom weapon/limit settings need to be retained. The
 Internet app navigates bundled offline pages; external links open your desktop
 browser. It does not browse arbitrary live websites.
 
@@ -88,9 +100,10 @@ device resets and appearance still require verification in the supported game.
 [GTA Workshop](https://github.com/darkcenturies/gta-workshop) contains guides,
 references and public research; this repository retains the public Phone source.
 
-The repository contains no game files. Use your own copy of GTA San Andreas.
+The source repository contains no game files. Release packages include generated
+stock map data. Use your own copy of GTA San Andreas.
 Original notices and third-party credits remain in THIRD_PARTY_NOTICES.md.
 
 ## Download merged builds
 
-Every successful merge to `main` produces a Windows x86 build in [Actions](https://github.com/darkcenturies/valkyrie-phone/actions). Open the successful main-branch run and download its `valkyrie-phone-gta-sa-1.0-<commit>` artifact. It contains the ASI, default configuration, map-building tools, source archive, licence and notices. Builds are kept for 30 days. Generate map data from your own game; no game data or private symbols are included.
+Every successful merge to `main` produces a full Windows x86 install package in [Actions](https://github.com/darkcenturies/valkyrie-phone/actions). Open the successful main-branch run and download its `valkyrie-phone-gta-sa-1.0-<commit>` artifact. It includes the ASI, default configuration, **generated stock map tiles and ready-to-copy optional weapon configs**, map builder, source archive, licence and notices. Builds are kept for 30 days. Content is downloaded from the pinned [content release](https://github.com/darkcenturies/valkyrie-phone/releases/tag/phone-content-v1); Actions verifies archive hashes and every tile before publishing. No private symbols are included.
