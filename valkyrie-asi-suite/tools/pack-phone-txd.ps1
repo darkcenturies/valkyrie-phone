@@ -39,7 +39,7 @@ foreach($file in $files) {
     # UI artwork retains its coarse pixel edges; handset and photo artwork stay bilinear.
     # Direct3D 9 native texture, clamp addressing, 8888 raster.
     $pixelArt = $name -match '^(app_|g_|w_|game_)' -or
-        $name -in @('cam_shutter', 'disc', 'clock_face', 'glow') -or
+        $name -in @('cam_shutter', 'disc', 'clock_face', 'glow', 'valkyriephoneicon') -or
         ($name.StartsWith('sm_') -and $name -notin @('sm_body', 'sm_back', 'sm_boot', 'sm_phone_normal', 'sm_phone_material'))
     $filter = if ($pixelArt -and -not $name.EndsWith('_64')) { [uint32]0x3301 } else { [uint32]0x3302 }
     $writer.Write([uint32]9);$writer.Write($filter)

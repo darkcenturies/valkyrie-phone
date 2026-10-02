@@ -28,7 +28,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Output "data") | Out-Null
 Copy-Item -LiteralPath (Join-Path $phone "assets\model\valkyrie-phone-model.dff") -Destination (Join-Path $Output "$name.dff") -Force
 
 # The model's textures, and the HUD icon as <model>icon - where the game's
-# HUD looks for a weapon's icon (Atmosphere's phone icon).
+# HUD looks for a weapon's icon (the 16-pixel phone icon).
 $stage = Join-Path ([IO.Path]::GetTempPath()) "valkyrie-phone-weapon-txd"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Path $stage | Out-Null
